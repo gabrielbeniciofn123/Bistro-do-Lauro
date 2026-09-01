@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bistrô São Lauro — Cardápio · Cocais, Minas Gerais</title>
+<meta name="description" content="Cardápio digital do Bistrô São Lauro em Cocais, Minas Gerais. Culinária mineira de qualidade — porções, carnes, peixes e muito mais. Quinta e Sexta 18h-23h / Sáb, Dom e Feriados 14h-00h.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,500;1,600&amp;family=Jost:wght@300;400;500;600&amp;display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+<link rel="preload" as="image" href="imag/barlauro.png">
+<link rel="icon" href="imag/logobistro.jpg" type="image/jpeg">
+</head>
+<body>
+
+<!-- ============ NAVEGAÇÃO ============ -->
+<header class="nav" id="nav">
+  <div class="container">
+    <a href="#inicio" class="nav-marca" aria-label="Bistrô São Lauro — início">
+      <img src="imag/logobistro.jpg" alt="Bistrô São Lauro" class="nav-logo">
+      <span class="nav-nome">Bistrô São Lauro</span>
+    </a>
+    <nav class="nav-links" aria-label="Navegação principal">
+      <a href="#inicio">Início</a>
+      <a href="#cardapio">Cardápio</a>
+      <a href="#horarios">Horários</a>
+      <a href="#localizacao">Localização</a>
+    </nav>
+    <button type="button" class="botao botao--outline nav-administrador" disabled>Administrador</button>
+    <button class="nav-hamburguer" id="botaoHamburguer" aria-label="Abrir menu" aria-expanded="false" aria-controls="menuMobile">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+</header>
+
+<!-- ============ MENU MOBILE ============ -->
+<div class="nav-mobile" id="menuMobile">
+  <img src="imag/logobistro.jpg" alt="Bistrô São Lauro" class="mobile-logo">
+  <a href="#inicio">Início</a>
+  <a href="#cardapio">Cardápio</a>
+  <a href="#horarios">Horários</a>
+  <a href="#localizacao">Localização</a>
+  <button type="button" class="botao botao--secundario" disabled>Administrador</button>
+</div>
+
+<!-- ============ HERO ============ -->
+<section class="hero" id="inicio">
+  <div class="hero-fundo" role="img" aria-label="Fachada do Bistrô São Lauro em Cocais, Minas Gerais"></div>
+  <div class="hero-conteudo">
+    <img src="imag/logobistro.jpg" alt="Bistrô São Lauro" class="hero-logo">
+    <h1 class="hero-titulo">Culinária mineira<br>de qualidade</h1>
+    <p class="hero-subtitulo">Sabores autênticos de Minas, preparados com cuidado e servidos com acolhimento.</p>
+    <div class="hero-botoes">
+      <a href="#cardapio" class="botao botao--primario">Ver cardápio</a>
+      <button type="button" class="botao botao--secundario" disabled>Administrador</button>
+    </div>
+    <p class="hero-localizacao">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s7-7.5 7-12a7 7 0 1 0-14 0c0 4.5 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/></svg>
+      Cocais — Minas Gerais
+    </p>
+  </div>
+  <div class="hero-scroll" aria-hidden="true"><span></span></div>
+</section>
+
+<!-- ============ CARDÁPIO ============ -->
+<section class="secao" id="cardapio">
+  <div class="container">
+    <div class="secao-cabecalho revelar">
+      <p class="rotulo-superior">Nosso cardápio</p>
+      <h2 class="titulo-secao">Sabores da Casa</h2>
+      <p class="texto-secao">Pratos mineiros tradicionais, porções generosas e uma carta completa de bebidas para todos os momentos.</p>
+      <div class="linha-botanica" aria-hidden="true">✦</div>
+    </div>
+
+    <div class="cardapio-busca revelar">
+      <label for="buscaCardapio" class="sr-only">Buscar no cardápio</label>
+      <div class="busca-wrapper">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.2" y2="16.2"/></svg>
+        <input type="search" id="buscaCardapio" placeholder="Buscar prato ou bebida..." autocomplete="off">
+      </div>
+    </div>
+
+    <nav class="cardapio-categorias" id="categoriasCardapio" aria-label="Categorias do cardápio"></nav>
+
+    <div id="gradeCardapio"></div>
+    <p class="cardapio-sem-resultado" id="semResultado" hidden>Nenhum item encontrado para sua busca.</p>
+  </div>
+</section>
+
+<!-- ============ HORÁRIOS ============ -->
+<section class="secao horarios" id="horarios">
+  <div class="container">
+    <div class="secao-cabecalho revelar">
+      <p class="rotulo-superior">Funcionamento</p>
+      <h2 class="titulo-secao">Horários de atendimento</h2>
+    </div>
+    <div class="horarios-grade revelar" id="gradeHorarios"></div>
+    <p class="horarios-aviso">Horários sujeitos a alterações em feriados e datas especiais. Em feriados, funcionamos das 14h às 00h.</p>
+  </div>
+</section>
+
+<!-- ============ CENTRO HISTÓRICO ============ -->
+<section class="secao destino" id="destino">
+  <div class="container">
+    <div class="destino-imagem revelar">
+      <div class="destino-moldura">
+        <img src="imag/fotoigreja.png" alt="Igreja colonial do Centro Histórico de Cocais, Barão de Cocais — MG" loading="lazy">
+        <div class="destino-moldura-borda" aria-hidden="true"></div>
+      </div>
+    </div>
+    <div class="destino-texto revelar">
+      <p class="rotulo-superior">Patrimônio cultural mineiro</p>
+      <h2 class="titulo-secao">Centro Histórico<br>de Cocais</h2>
+      <div class="destino-divisor" aria-hidden="true">✦</div>
+      <p>Um dos pontos mais encantadores de Barão de Cocais, preservando a beleza da antiga Vila Colonial, com forte identidade cultural mineira.</p>
+      <p>Destino ideal para quem busca história, tranquilidade, gastronomia típica e contato com a natureza.</p>
+      <div class="destino-detalhe">
+        <span>📍 Vila Colonial · Barão de Cocais, MG</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ LOCALIZAÇÃO ============ -->
+<section class="secao localizacao" id="localizacao">
+  <div class="container">
+    <div class="mapa-wrapper revelar">
+      <iframe
+        src="https://maps.google.com/maps?q=Pra%C3%A7a+da+Vila+Colonial%2C+Cocais%2C+Bar%C3%A3o+de+Cocais%2C+MG&output=embed"
+        loading="lazy"
+        title="Localização — Praça da Vila Colonial, Cocais, Barão de Cocais, MG"
+        allowfullscreen>
+      </iframe>
+    </div>
+    <div class="localizacao-info revelar">
+      <p class="rotulo-superior">Onde estamos</p>
+      <h2 class="titulo-secao">Localização</h2>
+      <p class="localizacao-endereco">Praça da Vila Colonial, Cocais<br>Barão de Cocais — MG</p>
+      <div class="localizacao-botoes">
+        <a href="https://www.google.com/maps/search/Pra%C3%A7a+da+Vila+Colonial,+Cocais,+Bar%C3%A3o+de+Cocais,+MG" target="_blank" rel="noopener" class="botao botao--outline">Abrir no Google Maps</a>
+        <a href="https://www.google.com/maps/dir//Pra%C3%A7a+da+Vila+Colonial,+Cocais,+Bar%C3%A3o+de+Cocais,+MG" target="_blank" rel="noopener" class="botao botao--outline">Traçar rota</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RODAPÉ ============ -->
+<footer class="rodape">
+  <div class="container">
+    <div class="rodape-grade">
+      <div class="rodape-marca-bloco">
+        <img src="imag/logobistro.jpg" alt="Bistrô São Lauro" class="rodape-logo">
+        <p class="rodape-slogan">Culinária mineira de qualidade</p>
+        <p>Cocais, Minas Gerais</p>
+      </div>
+      <div>
+        <h4>Contato</h4>
+        <ul>
+          <li><a href="https://instagram.com/bistrosaolauro" target="_blank" rel="noopener">Instagram</a></li>
+          <li><a href="https://wa.me/5500000000000" id="linkWhatsappRodape" target="_blank" rel="noopener">WhatsApp</a></li>
+        </ul>
+      </div>
+      <div>
+        <h4>Horários</h4>
+        <ul id="listaHorariosRodape"></ul>
+      </div>
+      <div>
+        <h4>Administrador</h4>
+        <button type="button" class="botao botao--secundario" disabled>Administrador</button>
+      </div>
+    </div>
+    <div class="rodape-base">
+      <p>&copy; <span id="anoAtual"></span> Bistrô São Lauro. Todos os direitos reservados.</p>
+    </div>
+  </div>
+</footer>
+
+<!-- Botão flutuante WhatsApp -->
+<a href="https://wa.me/5500000000000" class="whatsapp-float" target="_blank" rel="noopener" aria-label="Fale conosco no WhatsApp">
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.5 14.4c-.3-.1-1.6-.8-1.9-.9-.3-.1-.5-.1-.7.1-.2.3-.7.9-.9 1.1-.2.2-.3.2-.6.1-1.6-.8-2.7-1.4-3.8-3.2-.3-.5.3-.5.8-1.6.1-.2 0-.4-.1-.5-.1-.1-.6-1.5-.8-2-.2-.5-.4-.4-.6-.4-.2 0-.4 0-.6 0-.2 0-.5.1-.8.4-.3.3-1.1 1.1-1.1 2.6 0 1.5 1.1 3 1.3 3.2.2.2 2 3.1 5 4.3 2.9 1.2 2.9.8 3.4.7.5-.1 1.6-.6 1.8-1.3.2-.7.2-1.2.2-1.3-.1-.1-.3-.2-.6-.3z"/><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5.1-1.3A10 10 0 1 0 12 2z" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>
+</a>
+
+<script src="js/config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
