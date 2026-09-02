@@ -1,5 +1,6 @@
 .DS_Store
 **/.DS_Store
+.tools/
 config/database.php
 config/install.lock
 logs/*.log

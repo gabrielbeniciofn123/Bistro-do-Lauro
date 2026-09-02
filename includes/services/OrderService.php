@@ -15,7 +15,15 @@ final class OrderService
 
     public static function create(array $data, array $user): array
     {
-        $sessionId = request_int($data, 'table_session_id');
+        $sessionId = isset($data['table_session_id']) && $data['table_session_id'] !== null
+            ? request_int($data, 'table_session_id')
+            : null;
+        $tableId = isset($data['table_id']) && $data['table_id'] !== null
+            ? request_int($data, 'table_id')
+            : null;
+        if (($sessionId === null) === ($tableId === null)) {
+            throw new DomainException('Informe uma mesa disponível ou um atendimento aberto.');
+        }
         $key = idempotency_key((string) ($data['idempotency_key'] ?? ''));
         $items = $data['items'] ?? null;
         if (!is_array($items) || $items === [] || count($items) > 100) {
@@ -28,23 +36,14 @@ final class OrderService
         }
 
         try {
-            return Database::transaction(function (PDO $pdo) use ($sessionId, $key, $items, $data, $user): array {
+            return Database::transaction(function (PDO $pdo) use ($sessionId, $tableId, $key, $items, $data, $user): array {
                 $existing = self::findByIdempotencyKey($pdo, $key);
                 if ($existing) {
                     $existing['duplicate'] = true;
                     return $existing;
                 }
 
-                $sessionStatement = $pdo->prepare(
-                    "SELECT ts.id, ts.table_id, ts.status, t.number AS table_number
-                     FROM table_sessions ts INNER JOIN restaurant_tables t ON t.id = ts.table_id
-                     WHERE ts.id = :id FOR UPDATE"
-                );
-                $sessionStatement->execute(['id' => $sessionId]);
-                $session = $sessionStatement->fetch();
-                if (!$session || $session['status'] !== 'open') {
-                    throw new DomainException('A mesa não está aberta para receber pedidos.');
-                }
+                $session = self::resolveSessionForOrder($pdo, $sessionId, $tableId, $user);
 
                 $productIds = array_values(array_unique(array_map(
                     static fn (array $item): int => request_int($item, 'product_id'),
@@ -105,7 +104,7 @@ final class OrderService
                      VALUES (:public_id, :session_id, :table_id, :waiter_id, 'new', :idempotency_key, :subtotal, :total, :notes)"
                 )->execute([
                     'public_id' => $publicId,
-                    'session_id' => $sessionId,
+                    'session_id' => $session['id'],
                     'table_id' => $session['table_id'],
                     'waiter_id' => $user['id'],
                     'idempotency_key' => $key,
@@ -147,8 +146,8 @@ final class OrderService
 
                 $pdo->prepare(
                     'UPDATE table_sessions SET subtotal = subtotal + :total, total = total + :total, version = version + 1 WHERE id = :id'
-                )->execute(['total' => $total, 'id' => $sessionId]);
-                $pdo->prepare("UPDATE restaurant_tables SET status = 'waiting_order' WHERE id = :id AND status <> 'bill_requested'")
+                )->execute(['total' => $total, 'id' => $session['id']]);
+                $pdo->prepare("UPDATE restaurant_tables SET status = 'occupied' WHERE id = :id AND status <> 'bill_requested'")
                     ->execute(['id' => $session['table_id']]);
                 self::recordStatus($pdo, $orderId, 'new', (int) $user['id']);
                 audit_log('order_created', 'order', $orderId, ['table' => $session['table_number'], 'total' => $total]);
@@ -453,6 +452,71 @@ final class OrderService
             throw new DomainException('Um complemento selecionado não pertence ao produto.');
         }
         return $selected;
+    }
+
+    private static function resolveSessionForOrder(PDO $pdo, ?int $sessionId, ?int $tableId, array $user): array
+    {
+        if ($sessionId !== null) {
+            $statement = $pdo->prepare(
+                "SELECT ts.id, ts.table_id, ts.status, t.number AS table_number
+                 FROM table_sessions ts
+                 INNER JOIN restaurant_tables t ON t.id = ts.table_id
+                 WHERE ts.id = :id FOR UPDATE"
+            );
+            $statement->execute(['id' => $sessionId]);
+            $session = $statement->fetch();
+            if (!$session || $session['status'] !== 'open') {
+                throw new DomainException('A mesa não está aberta para receber pedidos.');
+            }
+            return $session;
+        }
+
+        $settings = $pdo->query('SELECT restaurant_open FROM restaurant_settings WHERE id = 1 FOR UPDATE')->fetch();
+        if (!$settings || !(bool) $settings['restaurant_open']) {
+            throw new DomainException('O restaurante está fechado para novos atendimentos.');
+        }
+
+        $statement = $pdo->prepare(
+            'SELECT id, number, status, active FROM restaurant_tables WHERE id = :id AND deleted_at IS NULL FOR UPDATE'
+        );
+        $statement->execute(['id' => $tableId]);
+        $table = $statement->fetch();
+        if (!$table || !(bool) $table['active']) {
+            throw new DomainException('Mesa não encontrada ou inativa.');
+        }
+        if ($table['status'] !== 'available') {
+            throw new DomainException('Esta mesa foi ocupada enquanto o pedido era montado. Atualize as mesas e confira antes de enviar.');
+        }
+
+        $existing = $pdo->prepare(
+            "SELECT id FROM table_sessions WHERE table_id = :table_id AND status IN ('open', 'payment_pending') LIMIT 1 FOR UPDATE"
+        );
+        $existing->execute(['table_id' => $tableId]);
+        if ($existing->fetchColumn()) {
+            throw new DomainException('Esta mesa já possui um atendimento aberto. Atualize as mesas antes de enviar.');
+        }
+
+        $publicId = uuid_v4();
+        $pdo->prepare(
+            "INSERT INTO table_sessions (public_id, table_id, opened_by, status, opened_at)
+             VALUES (:public_id, :table_id, :opened_by, 'open', NOW())"
+        )->execute([
+            'public_id' => $publicId,
+            'table_id' => $tableId,
+            'opened_by' => $user['id'],
+        ]);
+        $newSessionId = (int) $pdo->lastInsertId();
+        audit_log('table_opened', 'table_session', $newSessionId, [
+            'table_id' => $tableId,
+            'table_number' => $table['number'],
+            'opened_with_first_order' => true,
+        ]);
+        return [
+            'id' => $newSessionId,
+            'table_id' => (int) $tableId,
+            'status' => 'open',
+            'table_number' => $table['number'],
+        ];
     }
 
     private static function recordStatus(PDO $pdo, int $orderId, string $status, int $userId, ?string $notes = null): void

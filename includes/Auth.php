@@ -28,11 +28,14 @@ final class Auth
         $statement = $pdo->prepare(
             'SELECT id, name, login, email, password_hash, role, active
              FROM users
-             WHERE (LOWER(login) = :login OR LOWER(email) = :login)
+             WHERE (LOWER(login) = :login_name OR LOWER(email) = :login_email)
                AND deleted_at IS NULL
              LIMIT 1'
         );
-        $statement->execute(['login' => $login]);
+        $statement->execute([
+            'login_name' => $login,
+            'login_email' => $login,
+        ]);
         $user = $statement->fetch();
         $valid = is_array($user) && (bool) $user['active'] && password_verify($password, (string) $user['password_hash']);
 
