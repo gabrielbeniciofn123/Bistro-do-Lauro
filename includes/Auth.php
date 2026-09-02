@@ -50,6 +50,7 @@ final class Auth
             'role' => (string) $user['role'],
         ];
         $_SESSION['last_activity'] = time();
+        $_SESSION['user_validated_at'] = time();
         $pdo->prepare('UPDATE users SET last_login_at = NOW() WHERE id = :id')->execute(['id' => $user['id']]);
         audit_log('login', 'user', (int) $user['id']);
         return true;
@@ -72,11 +73,29 @@ final class Auth
     {
         $user = self::user();
         if ($user === null) {
-            if (str_contains($_SERVER['REQUEST_URI'] ?? '', '/api/')) {
-                json_error('Faça login para continuar.', 401);
+            self::denyUnauthenticated();
+        }
+
+        if (time() - (int) ($_SESSION['user_validated_at'] ?? 0) >= 60) {
+            $statement = Database::connection()->prepare(
+                'SELECT id, name, login, email, role FROM users WHERE id = :id AND active = 1 AND deleted_at IS NULL LIMIT 1'
+            );
+            $statement->execute(['id' => $user['id']]);
+            $freshUser = $statement->fetch();
+            if (!$freshUser) {
+                $_SESSION = [];
+                session_regenerate_id(true);
+                self::denyUnauthenticated();
             }
-            header('Location: /login.php');
-            exit;
+            $_SESSION['user'] = [
+                'id' => (int) $freshUser['id'],
+                'name' => (string) $freshUser['name'],
+                'login' => (string) $freshUser['login'],
+                'email' => $freshUser['email'],
+                'role' => (string) $freshUser['role'],
+            ];
+            $_SESSION['user_validated_at'] = time();
+            $user = $_SESSION['user'];
         }
         return $user;
     }
@@ -128,5 +147,14 @@ final class Auth
         if ($success) {
             $pdo->prepare('DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 30 DAY)')->execute();
         }
+    }
+
+    private static function denyUnauthenticated(): never
+    {
+        if (str_contains($_SERVER['REQUEST_URI'] ?? '', '/api/')) {
+            json_error('Faça login para continuar.', 401);
+        }
+        header('Location: /login.php');
+        exit;
     }
 }

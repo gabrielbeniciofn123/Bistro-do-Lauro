@@ -30,11 +30,25 @@ header('X-Content-Type-Options: nosniff');
 header('X-Frame-Options: SAMEORIGIN');
 header('Referrer-Policy: strict-origin-when-cross-origin');
 header("Permissions-Policy: camera=(), microphone=(), geolocation=()");
+header("Content-Security-Policy: default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'");
+header('Cache-Control: no-store');
 
 require_once __DIR__ . '/Database.php';
 require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/audit.php';
 require_once __DIR__ . '/Auth.php';
+
+spl_autoload_register(static function (string $class): void {
+    if (!preg_match('/^[A-Za-z][A-Za-z0-9_]*$/', $class)) {
+        return;
+    }
+    foreach ([__DIR__ . '/services/' . $class . '.php', __DIR__ . '/' . $class . '.php'] as $file) {
+        if (is_file($file)) {
+            require_once $file;
+            return;
+        }
+    }
+});
 
 set_exception_handler(static function (Throwable $exception): void {
     error_log($exception::class . ': ' . $exception->getMessage() . "\n" . $exception->getTraceAsString());

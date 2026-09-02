@@ -92,7 +92,7 @@ function idempotency_key(string $value): string
 function decimal_value(mixed $value): string
 {
     $normalized = str_replace(',', '.', trim((string) $value));
-    if (!preg_match('/^-?\d{1,8}(?:\.\d{1,2})?$/', $normalized)) {
+    if (!preg_match('/^\d{1,8}(?:\.\d{1,2})?$/', $normalized)) {
         throw new DomainException('Valor monetário inválido.');
     }
     return number_format((float) $normalized, 2, '.', '');
