@@ -3,7 +3,7 @@
   const app = document.getElementById("waiterApp");
   if (!app) return;
   const userId = app.dataset.userId;
-  const state = { tables: [], catalog: [], session: null, cart: [], category: "all", lastEventId: 0, pendingKey: null };
+  const state = { tables: [], catalog: [], session: null, cart: [], category: "all", productSearch: "", lastEventId: 0, pendingKey: null };
   let tableLoadPromise = null;
   const tableLabels = { available: "Disponível", occupied: "Ocupada", waiting_order: "Aguardando pedido", bill_requested: "Conta solicitada" };
   const statusLabels = { new: "Novo", accepted: "Aceito", preparing: "Em preparo", ready: "Pronto", delivered: "Entregue", cancelled: "Cancelado" };
@@ -88,6 +88,8 @@
       : "A mesa ficará ocupada somente quando o primeiro pedido for enviado.";
     document.getElementById("requestBillButton").disabled = !session.id || session.status === "payment_pending";
     state.category = "all";
+    state.productSearch = "";
+    document.getElementById("productSearch").value = "";
     renderCategories(); renderProducts(); updateCartBar();
   }
 
@@ -99,9 +101,22 @@
     return state.catalog.flatMap((category) => category.products.map((product) => ({ ...product, category_name: category.name })));
   }
 
+  function searchable(value) {
+    return String(value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  }
+
   function renderProducts() {
-    const products = allProducts().filter((product) => state.category === "all" || product.category_id === Number(state.category));
-    document.getElementById("waiterProducts").innerHTML = products.length ? products.map((product) => `<article class="product-card">${product.image_path ? `<img class="product-image" src="${PDV.escapeHtml(product.image_path)}" alt="">` : `<div class="product-placeholder">${PDV.escapeHtml(product.name.slice(0, 2).toUpperCase())}</div>`}<div class="product-body"><span class="eyebrow">${PDV.escapeHtml(product.category_name)}</span><h3>${PDV.escapeHtml(product.name)}</h3><p>${PDV.escapeHtml(product.description || "")}</p><div class="product-footer"><strong class="money">${PDV.money(product.price)}</strong><button class="btn btn-primary btn-sm" type="button" data-add-product="${product.id}">Adicionar</button></div></div></article>`).join("") : '<div class="empty-state"><p>Nenhum produto disponível nesta categoria.</p></div>';
+    const query = searchable(state.productSearch);
+    const products = allProducts().filter((product) => {
+      const matchesCategory = state.category === "all" || product.category_id === Number(state.category);
+      const matchesSearch = !query || searchable(`${product.name} ${product.description || ""} ${product.category_name}`).includes(query);
+      return matchesCategory && matchesSearch;
+    });
+    document.getElementById("visibleProductCount").textContent = `${products.length} ${products.length === 1 ? "produto" : "produtos"}`;
+    const emptyMessage = query
+      ? '<div class="empty-state menu-empty"><h3>Nenhum produto encontrado</h3><p>Tente outro nome ou limpe a busca.</p><button class="btn btn-secondary" type="button" data-clear-product-search>Limpar busca</button></div>'
+      : '<div class="empty-state menu-empty"><p>Nenhum produto disponível nesta categoria.</p></div>';
+    document.getElementById("waiterProducts").innerHTML = products.length ? products.map((product) => `<article class="product-card">${product.image_path ? `<img class="product-image" src="${PDV.escapeHtml(product.image_path)}" alt="">` : `<div class="product-placeholder">${PDV.escapeHtml(product.name.slice(0, 2).toUpperCase())}</div>`}<div class="product-body"><span class="eyebrow">${PDV.escapeHtml(product.category_name)}</span><h3>${PDV.escapeHtml(product.name)}</h3><p>${PDV.escapeHtml(product.description || "")}</p><div class="product-footer"><strong class="money">${PDV.money(product.price)}</strong><button class="btn btn-primary btn-sm" type="button" data-add-product="${product.id}" aria-label="Adicionar ${PDV.escapeHtml(product.name)} ao pedido">Adicionar</button></div></div></article>`).join("") : emptyMessage;
   }
 
   function productForm(product, existing = null) {
@@ -115,12 +130,22 @@
     const existing = editIndex === null ? null : state.cart[editIndex];
     PDV.openModal({ title: existing ? "Editar item" : "Adicionar ao pedido", body: productForm(product, existing), footer: `<button class="btn btn-secondary" type="button" data-close-modal>Cancelar</button><button class="btn btn-primary" id="confirmProduct" type="button">${existing ? "Salvar alterações" : "Adicionar"}</button>` });
     const quantity = document.getElementById("productQuantity");
-    document.getElementById("addProductForm").onclick = (event) => {
+    const productFormElement = document.getElementById("addProductForm");
+    productFormElement.onclick = (event) => {
       const action = event.target.closest("[data-quantity]")?.dataset.quantity;
       if (!action) return;
       const current = Number(quantity.textContent);
       quantity.textContent = action === "plus" ? Math.min(99, current + 1) : Math.max(1, current - 1);
     };
+    productFormElement.addEventListener("change", (event) => {
+      const option = event.target.closest('input[name="modifier_ids"]');
+      if (!option?.checked) return;
+      const selectedInGroup = [...productFormElement.querySelectorAll(`input[name="modifier_ids"][data-group-id="${option.dataset.groupId}"]:checked`)];
+      if (selectedInGroup.length > Number(option.dataset.groupMax)) {
+        option.checked = false;
+        PDV.toast(`Escolha no máximo ${option.dataset.groupMax} opção(ões) neste complemento.`, "error", 4500);
+      }
+    });
     document.getElementById("confirmProduct").onclick = () => {
       const form = document.getElementById("addProductForm");
       const selected = [...form.querySelectorAll('input[name="modifier_ids"]:checked')];
@@ -164,6 +189,7 @@
     if (!await PDV.confirmAction(`Enviar ${state.cart.reduce((sum, item) => sum + item.quantity, 0)} itens para a Mesa ${state.session.table_number}?`, "Enviar pedido")) { openCart(); return; }
     state.pendingKey ||= crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
     saveDraft();
+    PDV.openModal({ title: "Enviando pedido", body: '<div class="empty-state sending-state"><span class="sending-spinner" aria-hidden="true"></span><h3>Aguarde um instante</h3><p>Estamos enviando os itens para o balcão e a cozinha.</p></div>' });
     try {
       const tableReference = state.session.id
         ? { table_session_id: state.session.id }
@@ -204,7 +230,17 @@
 
   document.getElementById("waiterTablesGrid").addEventListener("click", (event) => { const card = event.target.closest("[data-table-id]"); if (card) selectTable(Number(card.dataset.tableId)); });
   document.getElementById("waiterCategories").addEventListener("click", (event) => { const tab = event.target.closest("[data-category]"); if (!tab) return; state.category = tab.dataset.category === "all" ? "all" : Number(tab.dataset.category); renderCategories(); renderProducts(); });
-  document.getElementById("waiterProducts").addEventListener("click", (event) => { const add = event.target.closest("[data-add-product]"); if (add) openProduct(add.dataset.addProduct); });
+  document.getElementById("waiterProducts").addEventListener("click", (event) => {
+    const add = event.target.closest("[data-add-product]");
+    if (add) openProduct(add.dataset.addProduct);
+    if (event.target.closest("[data-clear-product-search]")) {
+      state.productSearch = "";
+      document.getElementById("productSearch").value = "";
+      renderProducts();
+      document.getElementById("productSearch").focus();
+    }
+  });
+  document.getElementById("productSearch").addEventListener("input", (event) => { state.productSearch = event.target.value; renderProducts(); });
   document.getElementById("tableSearch").addEventListener("input", renderTables);
   document.getElementById("areaFilter").addEventListener("change", renderTables);
   document.getElementById("refreshTables").addEventListener("click", () => loadTables().catch((error) => PDV.toast(error.message, "error")));

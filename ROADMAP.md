@@ -51,11 +51,16 @@ Entrega registrada no commit com a mensagem `feat: melhora gestão de mesas e pa
 
 Entrega registrada no commit com a mensagem `feat: torna atualizacao em tempo real resiliente`.
 
-### 5. Usabilidade e homologação — planejada
+### 5. Usabilidade e homologação — concluída
 
-- revisar o cardápio mobile e os fluxos de erro;
-- executar testes completos por perfil;
-- revisar instalação, backup e publicação em hospedagem.
+- busca de produtos sem diferença entre letras acentuadas e não acentuadas;
+- cardápio compacto no celular, carrinho sempre acessível e ações fixas nos modais;
+- limites de complementos e progresso de envio informados imediatamente;
+- erros de complemento, quantidade e pagamento cobertos pela integração sem efeitos parciais;
+- checklist de homologação separado por perfil;
+- procedimentos de publicação, backup e restauração documentados.
+
+Entrega registrada no commit com a mensagem `feat: conclui usabilidade e homologacao do pdv`.
 
 ## Regras de entrega
 

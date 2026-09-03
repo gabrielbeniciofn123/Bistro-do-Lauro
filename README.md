@@ -2,7 +2,7 @@
 
 Sistema de ponto de venda para restaurante desenvolvido em PHP 8, MySQL/MariaDB, HTML, CSS e JavaScript puro. O cardápio institucional existente foi preservado, e o acesso **Administrador** direciona ao PDV.
 
-O planejamento e o estado atual das fases estão em [`ROADMAP.md`](ROADMAP.md).
+O planejamento e o estado atual das fases estão em [`ROADMAP.md`](ROADMAP.md). O procedimento de produção está em [`docs/OPERACAO.md`](docs/OPERACAO.md).
 
 ## O que está incluído
 
@@ -96,7 +96,7 @@ Os perfis operacionais são separados: o garçom monta e envia pedidos pela áre
 5. Na cozinha, marque **INICIAR PREPARO** e depois **PEDIDO PRONTO**.
 6. No balcão, marque o pedido como entregue.
 7. Volte à mesma mesa pelo garçom e envie um segundo pedido. O primeiro deve continuar visível.
-8. Abra a mesa no balcão, confira a conta e clique em **Finalizar mesa**.
+8. Abra a mesa no balcão, confira a conta e clique em **Finalizar pagamento**.
 9. Teste um pagamento PIX ou divida entre duas formas. A soma precisa ser exatamente igual ao total.
 10. Confirme que a mesa voltou para disponível e a venda apareceu em **Histórico**.
 
@@ -112,7 +112,7 @@ O caminho recomendado é o instalador. Se precisar configurar manualmente:
 
 ## Segurança e manutenção
 
-- Faça backup diário do banco e da pasta `uploads`.
+- Faça backup diário do banco, da pasta `uploads` e da configuração protegida. Siga o procedimento de restauração em [`docs/OPERACAO.md`](docs/OPERACAO.md).
 - Nunca publique `config/database.php` nem envie esse arquivo ao GitHub; ele já está no `.gitignore`.
 - Pedidos, itens, pagamentos e cancelamentos não são apagados do histórico.
 - Preços e complementos são recalculados no servidor a partir do banco.
@@ -138,6 +138,7 @@ O teste de integração em `tests/integration.php` só executa quando o nome do 
 php tests/access-separation.php
 php tests/table-status-regression.php
 php tests/realtime-regression.php
+php tests/usability-regression.php
 PDV_TEST_CONFIRM=1 php tests/integration.php
 ```
 

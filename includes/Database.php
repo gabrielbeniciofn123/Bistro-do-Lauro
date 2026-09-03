@@ -4,6 +4,7 @@ declare(strict_types=1);
 final class Database
 {
     private static ?PDO $connection = null;
+    private static int $savepointCounter = 0;
 
     public static function connection(): PDO
     {
@@ -46,20 +47,29 @@ final class Database
     {
         $pdo = self::connection();
         $startedHere = !$pdo->inTransaction();
+        $savepoint = null;
 
         if ($startedHere) {
             $pdo->beginTransaction();
+        } else {
+            $savepoint = 'pdv_savepoint_' . (++self::$savepointCounter);
+            $pdo->exec('SAVEPOINT ' . $savepoint);
         }
 
         try {
             $result = $callback($pdo);
             if ($startedHere && $pdo->inTransaction()) {
                 $pdo->commit();
+            } elseif ($savepoint !== null && $pdo->inTransaction()) {
+                $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
             }
             return $result;
         } catch (Throwable $exception) {
             if ($startedHere && $pdo->inTransaction()) {
                 $pdo->rollBack();
+            } elseif ($savepoint !== null && $pdo->inTransaction()) {
+                $pdo->exec('ROLLBACK TO SAVEPOINT ' . $savepoint);
+                $pdo->exec('RELEASE SAVEPOINT ' . $savepoint);
             }
             throw $exception;
         }

@@ -84,6 +84,18 @@ try {
     $juiceId = (int) $pdo->lastInsertId();
     $productInsert->execute(['category' => $categoryId, 'name' => 'Sobremesa Teste', 'price' => '15.00']);
     $dessertId = (int) $pdo->lastInsertId();
+    $productInsert->execute(['category' => $categoryId, 'name' => 'Combo Teste', 'price' => '20.00']);
+    $comboId = (int) $pdo->lastInsertId();
+    $pdo->prepare('INSERT INTO modifier_groups (name, min_choices, max_choices, required, active) VALUES (:name, 1, 1, 1, 1)')
+        ->execute(['name' => 'Escolha obrigatória ' . $suffix]);
+    $modifierGroupId = (int) $pdo->lastInsertId();
+    $pdo->prepare('INSERT INTO modifiers (modifier_group_id, name, price_delta, active) VALUES (:group_id, :name, 2.00, 1)')
+        ->execute(['group_id' => $modifierGroupId, 'name' => 'Opção Teste']);
+    $pdo->prepare('INSERT INTO product_modifier_groups (product_id, modifier_group_id, sort_order) VALUES (:product_id, :group_id, 1)')
+        ->execute(['product_id' => $comboId, 'group_id' => $modifierGroupId]);
+    $pdo->prepare('INSERT INTO restaurant_tables (area_id, number, status, active) VALUES (:area, :number, :status, 1)')
+        ->execute(['area' => $areaId, 'number' => 'E' . $suffix, 'status' => 'available']);
+    $errorTableId = (int) $pdo->lastInsertId();
 
     AdminService::save('tables', [
         'id' => $tableId,
@@ -113,6 +125,20 @@ try {
     $waiter = ['id' => $users['waiter'], 'role' => 'waiter', 'name' => 'Garçom Teste'];
     $counter = ['id' => $users['counter'], 'role' => 'counter', 'name' => 'Caixa Teste'];
     $kitchen = ['id' => $users['kitchen'], 'role' => 'kitchen', 'name' => 'Cozinha Teste'];
+    assert_domain_error(
+        static fn () => OrderService::create([
+            'table_id' => $errorTableId,
+            'idempotency_key' => 'test-invalid-modifier-' . $suffix,
+            'items' => [['product_id' => $comboId, 'quantity' => 1, 'modifier_ids' => []]],
+        ], $waiter),
+        'pedido sem complemento obrigatório deve ser rejeitado'
+    );
+    $errorTableStatus = $pdo->prepare('SELECT status FROM restaurant_tables WHERE id = :id');
+    $errorTableStatus->execute(['id' => $errorTableId]);
+    assert_test($errorTableStatus->fetchColumn() === 'available', 'erro de complemento não deve ocupar a mesa');
+    $errorSessionCount = $pdo->prepare("SELECT COUNT(*) FROM table_sessions WHERE table_id = :table_id AND status IN ('open', 'payment_pending')");
+    $errorSessionCount->execute(['table_id' => $errorTableId]);
+    assert_test((int) $errorSessionCount->fetchColumn() === 0, 'erro de complemento não deve deixar atendimento aberto');
     $sessionCount = $pdo->prepare("SELECT COUNT(*) FROM table_sessions WHERE table_id = :table_id AND status IN ('open', 'payment_pending')");
     $sessionCount->execute(['table_id' => $tableId]);
     assert_test((int) $sessionCount->fetchColumn() === 0, 'selecionar uma mesa não deve criar sessão antes do pedido');
@@ -132,6 +158,16 @@ try {
     assert_test($tableStatus->fetchColumn() === 'occupied', 'mesa deve ficar ocupada após o primeiro pedido');
     $duplicate = OrderService::create(['table_id' => $tableId, 'idempotency_key' => $firstKey, 'items' => [['product_id' => $juiceId, 'quantity' => 1]]], $waiter);
     assert_test($duplicate['id'] === $order['id'] && !empty($duplicate['duplicate']), 'idempotência deve retornar o mesmo pedido');
+    assert_domain_error(
+        static fn () => OrderService::create([
+            'table_session_id' => $session['id'],
+            'idempotency_key' => 'test-invalid-quantity-' . $suffix,
+            'items' => [['product_id' => $juiceId, 'quantity' => 100, 'modifier_ids' => []]],
+        ], $waiter),
+        'quantidade acima do limite deve ser rejeitada'
+    );
+    $afterInvalidOrder = TableService::details($tableId);
+    assert_test(count($afterInvalidOrder['orders']) === 1 && $afterInvalidOrder['subtotal'] === '87.80', 'pedido inválido não deve alterar a comanda');
 
     $initialPoll = OrderService::poll($counter, 0);
     $initialOrderIds = array_column($initialPoll['orders'], 'id');
@@ -188,6 +224,19 @@ try {
     $repeatedBill = TableService::requestBill($tableId);
     assert_test($repeatedBill['status'] === 'payment_pending', 'solicitação de conta repetida deve ser idempotente');
     $totalCents = 10280;
+    assert_domain_error(
+        static fn () => PaymentService::closeTable([
+            'table_session_id' => $session['id'], 'idempotency_key' => 'test-invalid-payment-' . $suffix,
+            'apply_service_fee' => false, 'discount' => '0.00', 'surcharge' => '0.00',
+            'payments' => [['method' => 'pix', 'amount' => '100.00']],
+        ], $counter),
+        'pagamento com soma diferente do total deve ser rejeitado'
+    );
+    $afterInvalidPayment = TableService::details($tableId);
+    assert_test($afterInvalidPayment['status'] === 'payment_pending', 'pagamento inválido não deve fechar a mesa');
+    $paymentCount = $pdo->prepare('SELECT COUNT(*) FROM payments WHERE table_session_id = :session_id');
+    $paymentCount->execute(['session_id' => $session['id']]);
+    assert_test((int) $paymentCount->fetchColumn() === 0, 'pagamento inválido não deve gravar lançamentos parciais');
     $paymentKey = 'test-payment-' . $suffix;
     $closed = PaymentService::closeTable([
         'table_session_id' => $session['id'], 'idempotency_key' => $paymentKey,

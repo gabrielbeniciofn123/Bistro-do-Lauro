@@ -20,7 +20,8 @@ render_app_start($showOrders ? 'Meus pedidos' : 'Atendimento de mesas', $showOrd
     <section id="menuView" class="hidden">
         <header class="page-header"><div><button class="btn btn-ghost btn-sm" id="backToTables" type="button">← Mesas</button><span class="eyebrow" id="selectedArea">Atendimento</span><h2 id="selectedTable">Mesa</h2><p id="selectedSessionMeta"></p></div><button class="btn btn-secondary" id="requestBillButton" type="button">Solicitar conta</button></header>
         <div class="category-tabs" id="waiterCategories" aria-label="Categorias"></div>
-        <div class="products-grid" id="waiterProducts"></div>
+        <div class="menu-toolbar"><label class="menu-search"><span class="sr-only">Buscar no cardápio</span><input class="input" id="productSearch" type="search" inputmode="search" autocomplete="off" placeholder="Buscar prato ou bebida"></label><span id="visibleProductCount" aria-live="polite"></span></div>
+        <div class="products-grid" id="waiterProducts" aria-live="polite"></div>
         <div class="cart-bar hidden" id="cartBar"><div><p id="cartItemCount">0 itens</p><strong id="cartTotal">R$ 0,00</strong></div><button class="btn btn-success" id="openCart" type="button">Ver pedido</button></div>
     </section>
 
