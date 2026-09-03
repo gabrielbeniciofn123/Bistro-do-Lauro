@@ -12,13 +12,31 @@ if (!is_file($configFile)) {
     exit(2);
 }
 $databaseConfig = require $configFile;
+$testDatabase = trim((string) getenv('PDV_TEST_DATABASE'));
+if ($testDatabase !== '') {
+    $databaseConfig['database'] = $testDatabase;
+}
 if (!str_ends_with((string) ($databaseConfig['database'] ?? ''), '_test')) {
     fwrite(STDERR, "O nome do banco precisa terminar em _test.\n");
     exit(2);
 }
 
 require dirname(__DIR__) . '/includes/bootstrap.php';
-$pdo = Database::connection();
+$dsn = sprintf(
+    'mysql:host=%s;port=%d;dbname=%s;charset=%s',
+    $databaseConfig['host'],
+    (int) $databaseConfig['port'],
+    $databaseConfig['database'],
+    $databaseConfig['charset']
+);
+$pdo = new PDO($dsn, (string) $databaseConfig['username'], (string) $databaseConfig['password'], [
+    PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+    PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    PDO::ATTR_EMULATE_PREPARES => false,
+    PDO::ATTR_STRINGIFY_FETCHES => false,
+]);
+$connectionProperty = new ReflectionProperty(Database::class, 'connection');
+$connectionProperty->setValue(null, $pdo);
 $pdo->beginTransaction();
 
 function assert_test(bool $condition, string $message): void
@@ -57,19 +75,25 @@ try {
     $productInsert->execute(['category' => $categoryId, 'name' => 'Sobremesa Teste', 'price' => '15.00']);
     $dessertId = (int) $pdo->lastInsertId();
 
-    $session = TableService::open($tableId, $users['waiter']);
-    assert_test($session['status'] === 'open', 'mesa deve abrir');
     $waiter = ['id' => $users['waiter'], 'role' => 'waiter', 'name' => 'Garçom Teste'];
+    $sessionCount = $pdo->prepare("SELECT COUNT(*) FROM table_sessions WHERE table_id = :table_id AND status IN ('open', 'payment_pending')");
+    $sessionCount->execute(['table_id' => $tableId]);
+    assert_test((int) $sessionCount->fetchColumn() === 0, 'selecionar uma mesa não deve criar sessão antes do pedido');
     $firstKey = 'test-first-' . $suffix;
     $order = OrderService::create([
-        'table_session_id' => $session['id'], 'idempotency_key' => $firstKey,
+        'table_id' => $tableId, 'idempotency_key' => $firstKey,
         'items' => [
             ['product_id' => $tilapiaId, 'quantity' => 2, 'notes' => 'Uma tilápia sem cebola.', 'modifier_ids' => []],
             ['product_id' => $juiceId, 'quantity' => 1, 'notes' => '', 'modifier_ids' => []],
         ],
     ], $waiter);
     assert_test($order['total'] === '87.80', 'total do primeiro pedido');
-    $duplicate = OrderService::create(['table_session_id' => $session['id'], 'idempotency_key' => $firstKey, 'items' => [['product_id' => $juiceId, 'quantity' => 1]]], $waiter);
+    $session = TableService::details($tableId);
+    assert_test($session['status'] === 'open', 'sessão deve abrir junto com o primeiro pedido');
+    $tableStatus = $pdo->prepare('SELECT status FROM restaurant_tables WHERE id = :id');
+    $tableStatus->execute(['id' => $tableId]);
+    assert_test($tableStatus->fetchColumn() === 'occupied', 'mesa deve ficar ocupada após o primeiro pedido');
+    $duplicate = OrderService::create(['table_id' => $tableId, 'idempotency_key' => $firstKey, 'items' => [['product_id' => $juiceId, 'quantity' => 1]]], $waiter);
     assert_test($duplicate['id'] === $order['id'] && !empty($duplicate['duplicate']), 'idempotência deve retornar o mesmo pedido');
 
     $kitchen = ['id' => $users['kitchen'], 'role' => 'kitchen', 'name' => 'Cozinha Teste'];
@@ -84,6 +108,26 @@ try {
         'items' => [['product_id' => $dessertId, 'quantity' => 1, 'notes' => '', 'modifier_ids' => []]],
     ], $waiter);
     assert_test($second['total'] === '15.00', 'segundo pedido deve ser independente');
+
+    $pdo->prepare('INSERT INTO restaurant_tables (area_id, number, status, active) VALUES (:area, :number, :status, 1)')
+        ->execute(['area' => $areaId, 'number' => 'L' . $suffix, 'status' => 'available']);
+    $legacyTableId = (int) $pdo->lastInsertId();
+    $legacySession = TableService::open($legacyTableId, $users['waiter']);
+    $listedLegacyTable = array_values(array_filter(
+        TableService::list(),
+        static fn (array $table): bool => $table['id'] === $legacyTableId
+    ))[0] ?? null;
+    assert_test($listedLegacyTable !== null && $listedLegacyTable['status'] === 'available', 'sessão vazia antiga deve aparecer como mesa disponível');
+    $legacyOrder = OrderService::create([
+        'table_id' => $legacyTableId,
+        'idempotency_key' => 'test-legacy-' . $suffix,
+        'items' => [['product_id' => $juiceId, 'quantity' => 1, 'notes' => '', 'modifier_ids' => []],],
+    ], $waiter);
+    $legacyStatus = $pdo->prepare('SELECT status FROM table_sessions WHERE id = :id');
+    $legacyStatus->execute(['id' => $legacySession['id']]);
+    assert_test($legacyStatus->fetchColumn() === 'cancelled', 'sessão vazia antiga deve ser cancelada no primeiro envio');
+    assert_test((int) $legacyOrder['table_session_id'] !== (int) $legacySession['id'], 'primeiro pedido deve usar uma nova sessão');
+
     OrderService::changeStatus($second['id'], 'preparing', $kitchen);
     OrderService::changeStatus($second['id'], 'ready', $kitchen);
     OrderService::changeStatus($second['id'], 'delivered', $counter);
@@ -110,7 +154,6 @@ try {
         'payments' => [['method' => 'pix', 'amount' => '102.80']],
     ], $counter);
     assert_test(!empty($duplicatePayment['duplicate']), 'fechamento repetido deve retornar a mesma venda');
-    $tableStatus = $pdo->prepare('SELECT status FROM restaurant_tables WHERE id = :id');
     $tableStatus->execute(['id' => $tableId]);
     assert_test($tableStatus->fetchColumn() === 'available', 'mesa deve voltar a disponível');
 

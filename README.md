@@ -73,7 +73,7 @@ No cPanel, abra **SSL/TLS Status** e confirme que o AutoSSL está ativo para o d
 
 Não existe senha padrão. O primeiro administrador é criado no instalador.
 
-Os perfis operacionais são separados: o garçom abre mesas e envia pedidos pela área `/garcom/`; o balcão acompanha pedidos, consulta mesas e realiza o fechamento pela área `/balcao/`. O administrador pode supervisionar as duas áreas, cada uma mantendo sua própria navegação.
+Os perfis operacionais são separados: o garçom monta e envia pedidos pela área `/garcom/`; o balcão acompanha pedidos, consulta mesas e realiza o fechamento pela área `/balcao/`. Uma mesa disponível só fica ocupada quando o primeiro pedido é enviado. O administrador pode supervisionar as duas áreas, cada uma mantendo sua própria navegação.
 
 ## Primeiro preparo do restaurante
 
@@ -89,7 +89,7 @@ Os perfis operacionais são separados: o garçom abre mesas e envia pedidos pela
 
 1. Abra `/garcom/` no celular e `/balcao/` no computador.
 2. No balcão, clique em **Ativar som dos pedidos** uma vez.
-3. Como garçom, abra uma mesa, adicione dois pratos e uma bebida, inclua uma observação e envie.
+3. Como garçom, selecione uma mesa, adicione dois pratos e uma bebida, inclua uma observação e envie. A mesa deve continuar disponível até esse envio.
 4. Confirme que o pedido aparece no balcão e na cozinha sem atualizar a página.
 5. Na cozinha, marque **INICIAR PREPARO** e depois **PEDIDO PRONTO**.
 6. No balcão, marque o pedido como entregue.
@@ -134,5 +134,12 @@ O teste de integração em `tests/integration.php` só executa quando o nome do 
 
 ```bash
 php tests/access-separation.php
+php tests/table-status-regression.php
 PDV_TEST_CONFIRM=1 php tests/integration.php
+```
+
+Para executar a integração em outro banco sem alterar `config/database.php`, informe um banco isolado cujo nome termine em `_test`:
+
+```bash
+PDV_TEST_CONFIRM=1 PDV_TEST_DATABASE=bistro_pdv_test php tests/integration.php
 ```

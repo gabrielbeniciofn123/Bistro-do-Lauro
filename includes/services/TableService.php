@@ -7,7 +7,7 @@ final class TableService
     {
         $rows = Database::connection()->query(
             "SELECT t.id, t.number, t.name, t.status, t.area_id, a.name AS area_name,
-                    ts.id AS session_id, ts.public_id AS session_public_id, ts.opened_at,
+                    ts.id AS session_id, ts.public_id AS session_public_id, ts.status AS session_status, ts.opened_at,
                     ts.opened_by, u.name AS waiter_name, ts.subtotal, ts.total,
                     (SELECT COUNT(*) FROM orders o WHERE o.table_session_id = ts.id AND o.status <> 'cancelled') AS order_count
              FROM restaurant_tables t
@@ -23,6 +23,17 @@ final class TableService
             $row['session_id'] = $row['session_id'] === null ? null : (int) $row['session_id'];
             $row['opened_by'] = $row['opened_by'] === null ? null : (int) $row['opened_by'];
             $row['order_count'] = (int) $row['order_count'];
+            if ($row['session_status'] === 'open' && $row['order_count'] === 0 && (float) $row['subtotal'] === 0.0) {
+                $row['status'] = 'available';
+                $row['session_id'] = null;
+                $row['session_public_id'] = null;
+                $row['session_status'] = null;
+                $row['opened_at'] = null;
+                $row['opened_by'] = null;
+                $row['waiter_name'] = null;
+                $row['subtotal'] = null;
+                $row['total'] = null;
+            }
         }
         unset($row);
         return $rows;

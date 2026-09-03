@@ -7,7 +7,11 @@
   const tableLabels = { available: "Disponível", occupied: "Ocupada", waiting_order: "Aguardando pedido", bill_requested: "Conta solicitada" };
   const statusLabels = { new: "Novo", accepted: "Aceito", preparing: "Em preparo", ready: "Pronto", delivered: "Entregue", cancelled: "Cancelado" };
 
-  function draftKey() { return state.session ? `pdv_waiter_${userId}_cart_${state.session.id}` : null; }
+  function draftKey() {
+    if (!state.session) return null;
+    const reference = state.session.id ? `session_${state.session.id}` : `table_${state.session.table_id}`;
+    return `pdv_waiter_${userId}_cart_${reference}`;
+  }
   function saveDraft() {
     if (!draftKey()) return;
     localStorage.setItem(draftKey(), JSON.stringify({ cart: state.cart, pendingKey: state.pendingKey, savedAt: Date.now() }));
@@ -43,8 +47,15 @@
     try {
       let session;
       if (table.status === "available") {
-        if (!await PDV.confirmAction(`Abrir a Mesa ${table.number} para iniciar um novo atendimento?`, "Abrir mesa")) return;
-        session = await PDV.request("/api/tables/open.php", { method: "POST", body: { table_id: table.id } });
+        session = {
+          id: null,
+          table_id: table.id,
+          table_number: table.number,
+          area_name: table.area_name,
+          waiter_name: "",
+          opened_at: null,
+          status: "draft",
+        };
       } else {
         session = await PDV.request(`/api/tables/details.php?table_id=${table.id}`);
       }
@@ -64,8 +75,10 @@
     document.getElementById("menuView").classList.remove("hidden");
     document.getElementById("selectedTable").textContent = `Mesa ${session.table_number}`;
     document.getElementById("selectedArea").textContent = session.area_name || "Atendimento";
-    document.getElementById("selectedSessionMeta").textContent = `Aberta por ${session.waiter_name} às ${new Date(session.opened_at.replace(" ", "T")).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
-    document.getElementById("requestBillButton").disabled = session.status === "payment_pending";
+    document.getElementById("selectedSessionMeta").textContent = session.id
+      ? `Aberta por ${session.waiter_name} às ${new Date(session.opened_at.replace(" ", "T")).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+      : "A mesa ficará ocupada somente quando o primeiro pedido for enviado.";
+    document.getElementById("requestBillButton").disabled = !session.id || session.status === "payment_pending";
     state.category = "all";
     renderCategories(); renderProducts(); updateCartBar();
   }
@@ -144,14 +157,28 @@
     state.pendingKey ||= crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
     saveDraft();
     try {
-      const order = await PDV.request("/api/orders/create.php", { method: "POST", body: { table_session_id: state.session.id, idempotency_key: state.pendingKey, items: state.cart.map(({ product_id, quantity, notes, modifier_ids }) => ({ product_id, quantity, notes, modifier_ids })) } });
+      const tableReference = state.session.id
+        ? { table_session_id: state.session.id }
+        : { table_id: state.session.table_id };
+      const order = await PDV.request("/api/orders/create.php", { method: "POST", body: { ...tableReference, idempotency_key: state.pendingKey, items: state.cart.map(({ product_id, quantity, notes, modifier_ids }) => ({ product_id, quantity, notes, modifier_ids })) } });
       clearDraft(); updateCartBar(); PDV.closeModal();
+      state.session = {
+        ...state.session,
+        id: Number(order.table_session_id),
+        status: "open",
+        waiter_name: order.waiter_name,
+        opened_at: state.session.opened_at || order.created_at,
+      };
       PDV.openModal({ title: "Pedido enviado", body: `<div class="success-panel"><span class="status-icon success">✓</span><h3>Pedido #${order.id}</h3><p>O balcão e a cozinha já podem visualizar este pedido.</p></div>`, footer: '<button class="btn btn-primary" type="button" data-close-modal>Continuar</button>' });
       await loadTables();
     } catch (error) { PDV.toast(error.message, "error", 6000); openCart(); }
   }
 
   async function requestBill() {
+    if (!state.session?.id) {
+      PDV.toast("Envie o primeiro pedido antes de solicitar a conta.", "error", 5000);
+      return;
+    }
     if (state.cart.length) {
       PDV.toast("Envie ou remova os itens do carrinho antes de solicitar a conta.", "error", 5000);
       return;

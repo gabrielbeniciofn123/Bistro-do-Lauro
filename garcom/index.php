@@ -12,7 +12,7 @@ render_app_start($showOrders ? 'Meus pedidos' : 'Atendimento de mesas', $showOrd
 ?>
 <div id="waiterApp" data-area="waiter" data-user-id="<?= (int) $user['id'] ?>" data-initial-view="<?= $showOrders ? 'orders' : 'tables' ?>">
     <section id="tablesView" class="<?= $showOrders ? 'hidden' : '' ?>">
-        <header class="page-header"><div><span class="eyebrow">Salão</span><h2>Selecione uma mesa</h2><p>Abra uma mesa disponível ou continue um atendimento em andamento.</p></div><button class="btn btn-secondary" id="refreshTables" type="button">Atualizar</button></header>
+        <header class="page-header"><div><span class="eyebrow">Salão</span><h2>Selecione uma mesa</h2><p>Monte o primeiro pedido em uma mesa disponível ou continue um atendimento em andamento.</p></div><button class="btn btn-secondary" id="refreshTables" type="button">Atualizar</button></header>
         <div class="toolbar"><input class="input search" id="tableSearch" type="search" placeholder="Buscar mesa ou salão"><select class="input" id="areaFilter" style="max-width:220px"><option value="">Todos os salões</option></select></div>
         <div class="tables-grid" id="waiterTablesGrid" aria-live="polite"></div>
     </section>

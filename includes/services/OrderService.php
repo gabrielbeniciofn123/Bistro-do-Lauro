@@ -145,8 +145,16 @@ final class OrderService
                 }
 
                 $pdo->prepare(
-                    'UPDATE table_sessions SET subtotal = subtotal + :total, total = total + :total, version = version + 1 WHERE id = :id'
-                )->execute(['total' => $total, 'id' => $session['id']]);
+                    'UPDATE table_sessions
+                     SET subtotal = subtotal + :subtotal_increment,
+                         total = total + :total_increment,
+                         version = version + 1
+                     WHERE id = :id'
+                )->execute([
+                    'subtotal_increment' => $total,
+                    'total_increment' => $total,
+                    'id' => $session['id'],
+                ]);
                 $pdo->prepare("UPDATE restaurant_tables SET status = 'occupied' WHERE id = :id AND status <> 'bill_requested'")
                     ->execute(['id' => $session['table_id']]);
                 self::recordStatus($pdo, $orderId, 'new', (int) $user['id']);
@@ -273,8 +281,16 @@ final class OrderService
                 'snapshot' => json_encode($details, JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
             ]);
             $pdo->prepare(
-                'UPDATE table_sessions SET subtotal = GREATEST(0, subtotal - :total), total = GREATEST(0, total - :total), version = version + 1 WHERE id = :id'
-            )->execute(['total' => $order['total'], 'id' => $order['table_session_id']]);
+                'UPDATE table_sessions
+                 SET subtotal = GREATEST(0, subtotal - :subtotal_decrement),
+                     total = GREATEST(0, total - :total_decrement),
+                     version = version + 1
+                 WHERE id = :id'
+            )->execute([
+                'subtotal_decrement' => $order['total'],
+                'total_decrement' => $order['total'],
+                'id' => $order['table_session_id'],
+            ]);
             self::refreshWaitingTableStatus($pdo, (int) $order['table_id']);
             self::recordStatus($pdo, $orderId, 'cancelled', (int) $user['id'], $reason);
             audit_log('order_cancelled', 'order', $orderId, ['reason' => $reason, 'amount' => $order['total']]);
@@ -309,10 +325,27 @@ final class OrderService
             $modifiers->execute(['item_id' => $itemId]);
             $snapshot['modifiers'] = $modifiers->fetchAll();
             $pdo->prepare("UPDATE order_items SET status = 'cancelled' WHERE id = :id")->execute(['id' => $itemId]);
-            $pdo->prepare('UPDATE orders SET subtotal = GREATEST(0, subtotal - :amount), total = GREATEST(0, total - :amount) WHERE id = :id')
-                ->execute(['amount' => $item['line_total'], 'id' => $item['order_id']]);
-            $pdo->prepare('UPDATE table_sessions SET subtotal = GREATEST(0, subtotal - :amount), total = GREATEST(0, total - :amount), version = version + 1 WHERE id = :id')
-                ->execute(['amount' => $item['line_total'], 'id' => $item['table_session_id']]);
+            $pdo->prepare(
+                'UPDATE orders
+                 SET subtotal = GREATEST(0, subtotal - :subtotal_decrement),
+                     total = GREATEST(0, total - :total_decrement)
+                 WHERE id = :id'
+            )->execute([
+                'subtotal_decrement' => $item['line_total'],
+                'total_decrement' => $item['line_total'],
+                'id' => $item['order_id'],
+            ]);
+            $pdo->prepare(
+                'UPDATE table_sessions
+                 SET subtotal = GREATEST(0, subtotal - :subtotal_decrement),
+                     total = GREATEST(0, total - :total_decrement),
+                     version = version + 1
+                 WHERE id = :id'
+            )->execute([
+                'subtotal_decrement' => $item['line_total'],
+                'total_decrement' => $item['line_total'],
+                'id' => $item['table_session_id'],
+            ]);
             $pdo->prepare(
                 'INSERT INTO cancellations (order_id, order_item_id, cancelled_by, reason, amount, snapshot_json)
                  VALUES (:order_id, :item_id, :user_id, :reason, :amount, :snapshot)'
@@ -484,16 +517,36 @@ final class OrderService
         if (!$table || !(bool) $table['active']) {
             throw new DomainException('Mesa não encontrada ou inativa.');
         }
-        if ($table['status'] !== 'available') {
-            throw new DomainException('Esta mesa foi ocupada enquanto o pedido era montado. Atualize as mesas e confira antes de enviar.');
-        }
 
         $existing = $pdo->prepare(
-            "SELECT id FROM table_sessions WHERE table_id = :table_id AND status IN ('open', 'payment_pending') LIMIT 1 FOR UPDATE"
+            "SELECT ts.id, ts.status, ts.subtotal,
+                    (SELECT COUNT(*) FROM orders o WHERE o.table_session_id = ts.id AND o.status <> 'cancelled') AS order_count
+             FROM table_sessions ts
+             WHERE ts.table_id = :table_id AND ts.status IN ('open', 'payment_pending')
+             LIMIT 1 FOR UPDATE"
         );
         $existing->execute(['table_id' => $tableId]);
-        if ($existing->fetchColumn()) {
-            throw new DomainException('Esta mesa já possui um atendimento aberto. Atualize as mesas antes de enviar.');
+        $existingSession = $existing->fetch();
+        if ($existingSession) {
+            $isEmptyLegacySession = $existingSession['status'] === 'open'
+                && (int) $existingSession['order_count'] === 0
+                && (float) $existingSession['subtotal'] === 0.0;
+            if (!$isEmptyLegacySession) {
+                throw new DomainException('Esta mesa já possui um atendimento aberto. Atualize as mesas antes de enviar.');
+            }
+            $pdo->prepare(
+                "UPDATE table_sessions
+                 SET status = 'cancelled', closed_at = NOW(), version = version + 1
+                 WHERE id = :id"
+            )->execute(['id' => $existingSession['id']]);
+            audit_log('empty_table_session_cancelled', 'table_session', (int) $existingSession['id'], [
+                'table_id' => $tableId,
+                'reason' => 'Substituída pelo primeiro pedido enviado',
+            ]);
+            $table['status'] = 'available';
+        }
+        if ($table['status'] !== 'available') {
+            throw new DomainException('Esta mesa foi ocupada enquanto o pedido era montado. Atualize as mesas e confira antes de enviar.');
         }
 
         $publicId = uuid_v4();

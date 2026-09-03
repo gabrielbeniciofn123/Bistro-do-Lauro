@@ -179,6 +179,6 @@
     loadTables().catch((error) => PDV.toast(error.message, "error", 6000));
     document.getElementById("refreshCounterTables").onclick = () => loadTables();
     document.getElementById("counterTablesGrid").addEventListener("click", (event) => { const table = event.target.closest("[data-counter-table]"); if (table) openTable(Number(table.dataset.counterTable)); });
-    setInterval(() => loadTables().catch(() => {}), 5000);
+    setInterval(() => loadTables().catch(() => {}), 2000);
   }
 })();
