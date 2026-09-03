@@ -40,11 +40,16 @@ Critérios de conclusão:
 
 Entrega registrada no commit com a mensagem `feat: melhora gestão de mesas e pagamentos`.
 
-### 4. Alertas e operação em tempo real — planejada
+### 4. Alertas e operação em tempo real — concluída
 
-- revisar aviso sonoro de novo pedido;
-- tornar falhas de polling visíveis sem interromper a operação;
-- conferir atualização coordenada entre garçom, balcão e cozinha.
+- polling compartilhado sem requisições sobrepostas no garçom, balcão e cozinha;
+- falhas de sincronização e recuperação visíveis sem interromper a operação;
+- aviso visual e sonoro no balcão para pedidos novos;
+- contexto de áudio reutilizado e liberado por interação do usuário;
+- atualização automática das mesas do garçom preservando busca e filtro de salão;
+- cursor de eventos validado por teste de integração entre os três perfis operacionais.
+
+Entrega registrada no commit com a mensagem `feat: torna atualizacao em tempo real resiliente`.
 
 ### 5. Usabilidade e homologação — planejada
 

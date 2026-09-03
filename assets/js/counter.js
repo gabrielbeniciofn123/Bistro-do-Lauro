@@ -6,6 +6,7 @@
   const soundStorageKey = `pdv_counter_${userId}_sound_enabled`;
   const state = { orders: [], tables: [], lastEventId: 0, knownNew: new Set(), initialized: false, soundEnabled: localStorage.getItem(soundStorageKey) === "1", settings: null };
   let tableLoadPromise = null;
+  let alertAudioContext = null;
   const statusLabels = { new: "Novo", accepted: "Aceito", preparing: "Em preparo", ready: "Pronto", delivered: "Entregue", cancelled: "Cancelado" };
   const tableLabels = { available: "Disponível", occupied: "Ocupada", waiting_order: "Aguardando pedido", bill_requested: "Conta solicitada" };
   const methodLabels = { cash: "Dinheiro", pix: "PIX", debit_card: "Cartão de débito", credit_card: "Cartão de crédito", other: "Outro" };
@@ -39,18 +40,19 @@
   function empty(text) { return `<div class="empty-state" style="padding:1.5rem .5rem"><p>${text}</p></div>`; }
 
   async function pollOrders(force = false) {
-    try {
-      const data = await PDV.request(`/api/orders/poll.php?since_event_id=${force ? 0 : state.lastEventId}`);
-      state.lastEventId = data.last_event_id;
-      if (!data.changed) return;
-      const incomingNew = data.orders.filter((order) => order.status === "new");
-      const unseen = incomingNew.filter((order) => !state.knownNew.has(order.id));
-      if (state.initialized && unseen.length && state.soundEnabled) playAlert();
-      incomingNew.forEach((order) => state.knownNew.add(order.id));
-      state.initialized = true;
-      state.orders = data.orders;
-      renderOrders();
-    } catch (error) { if (force) PDV.toast(error.message, "error"); }
+    const data = await PDV.request(`/api/orders/poll.php?since_event_id=${force ? 0 : state.lastEventId}`);
+    state.lastEventId = Math.max(state.lastEventId, data.last_event_id);
+    if (!data.changed) return;
+    const incomingNew = data.orders.filter((order) => order.status === "new");
+    const unseen = incomingNew.filter((order) => !state.knownNew.has(order.id));
+    if (state.initialized && unseen.length) {
+      PDV.toast(unseen.length === 1 ? `Novo pedido na Mesa ${unseen[0].table_number}.` : `${unseen.length} novos pedidos recebidos.`, "success", 6000);
+      if (state.soundEnabled) playAlert();
+    }
+    incomingNew.forEach((order) => state.knownNew.add(order.id));
+    state.initialized = true;
+    state.orders = data.orders;
+    renderOrders();
   }
 
   async function changeStatus(orderId, status) {
@@ -78,13 +80,23 @@
     };
   }
 
-  function playAlert() {
+  async function prepareAlertAudio() {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContext) return null;
+    alertAudioContext ||= new AudioContext();
+    if (alertAudioContext.state === "suspended") await alertAudioContext.resume();
+    return alertAudioContext;
+  }
+
+  async function playAlert() {
     try {
-      const context = new (window.AudioContext || window.webkitAudioContext)();
+      const context = await prepareAlertAudio();
+      if (!context) return;
       const oscillator = context.createOscillator(); const gain = context.createGain();
       oscillator.type = "sine"; oscillator.frequency.setValueAtTime(720, context.currentTime); oscillator.frequency.setValueAtTime(880, context.currentTime + .12);
       gain.gain.setValueAtTime(.0001, context.currentTime); gain.gain.exponentialRampToValueAtTime(.16, context.currentTime + .02); gain.gain.exponentialRampToValueAtTime(.0001, context.currentTime + .35);
       oscillator.connect(gain); gain.connect(context.destination); oscillator.start(); oscillator.stop(context.currentTime + .36);
+      oscillator.onended = () => { oscillator.disconnect(); gain.disconnect(); };
     } catch { /* preferência visual continua ativa */ }
   }
 
@@ -94,6 +106,7 @@
     button.textContent = state.soundEnabled ? "Som dos pedidos ativo" : "Ativar som dos pedidos";
     button.classList.toggle("btn-success", state.soundEnabled);
     button.onclick = () => { state.soundEnabled = !state.soundEnabled; localStorage.setItem(soundStorageKey, state.soundEnabled ? "1" : "0"); button.textContent = state.soundEnabled ? "Som dos pedidos ativo" : "Ativar som dos pedidos"; button.classList.toggle("btn-success", state.soundEnabled); if (state.soundEnabled) playAlert(); };
+    if (state.soundEnabled) document.addEventListener("pointerdown", () => prepareAlertAudio().catch(() => {}), { once: true });
   }
 
   function loadTables() {
@@ -222,13 +235,13 @@
   }
 
   if (app.dataset.view === "orders") {
-    configureSoundButton(); pollOrders(true); setInterval(() => pollOrders(false), 2000);
-    document.getElementById("refreshOrders").onclick = () => pollOrders(true);
+    configureSoundButton();
+    const orderPolling = PDV.startPolling(() => pollOrders(false), { errorMessage: "Não foi possível atualizar os pedidos. Uma nova tentativa será feita automaticamente." });
+    document.getElementById("refreshOrders").onclick = () => { state.lastEventId = 0; orderPolling.runNow(); };
     document.querySelector(".board").addEventListener("click", (event) => { const status = event.target.closest("[data-order-status]"); if (status) changeStatus(Number(status.dataset.orderId), status.dataset.orderStatus); const cancel = event.target.closest("[data-cancel-order]"); if (cancel) cancelOrder(Number(cancel.dataset.cancelOrder)); const item = event.target.closest("[data-cancel-item]"); if (item) cancelItem(Number(item.dataset.cancelItem)); });
   } else {
-    loadTables().catch((error) => PDV.toast(error.message, "error", 6000));
-    document.getElementById("refreshCounterTables").onclick = () => loadTables();
+    const tablePolling = PDV.startPolling(loadTables, { errorMessage: "Não foi possível atualizar as mesas. Uma nova tentativa será feita automaticamente." });
+    document.getElementById("refreshCounterTables").onclick = () => tablePolling.runNow();
     document.getElementById("counterTablesGrid").addEventListener("click", (event) => { const table = event.target.closest("[data-counter-table]"); if (table) openTable(Number(table.dataset.counterTable)); });
-    setInterval(() => loadTables().catch(() => {}), 2000);
   }
 })();

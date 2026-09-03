@@ -15,11 +15,9 @@
   }
 
   async function poll(force = false) {
-    try {
-      const data = await PDV.request(`/api/orders/poll.php?since_event_id=${force ? 0 : state.lastEventId}`);
-      state.lastEventId = data.last_event_id;
-      if (data.changed) { state.orders = data.orders; render(); }
-    } catch (error) { if (force) PDV.toast(error.message, "error"); }
+    const data = await PDV.request(`/api/orders/poll.php?since_event_id=${force ? 0 : state.lastEventId}`);
+    state.lastEventId = Math.max(state.lastEventId, data.last_event_id);
+    if (data.changed) { state.orders = data.orders; render(); }
   }
 
   async function changeStatus(orderId, status, button) {
@@ -29,7 +27,7 @@
   }
 
   document.getElementById("kitchenGrid").addEventListener("click", (event) => { const button = event.target.closest("[data-kitchen-status]"); if (button) changeStatus(Number(button.dataset.orderId), button.dataset.kitchenStatus, button); });
-  document.getElementById("refreshKitchen").onclick = () => poll(true);
+  const orderPolling = PDV.startPolling(() => poll(false), { errorMessage: "Não foi possível atualizar a cozinha. Uma nova tentativa será feita automaticamente." });
+  document.getElementById("refreshKitchen").onclick = () => { state.lastEventId = 0; orderPolling.runNow(); };
   setInterval(() => document.querySelectorAll("[data-created-at]").forEach((timer) => { timer.textContent = elapsed(timer.dataset.createdAt); }), 1000);
-  poll(true); setInterval(() => poll(false), 2000);
 })();

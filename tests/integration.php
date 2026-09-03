@@ -111,6 +111,8 @@ try {
     );
 
     $waiter = ['id' => $users['waiter'], 'role' => 'waiter', 'name' => 'Garçom Teste'];
+    $counter = ['id' => $users['counter'], 'role' => 'counter', 'name' => 'Caixa Teste'];
+    $kitchen = ['id' => $users['kitchen'], 'role' => 'kitchen', 'name' => 'Cozinha Teste'];
     $sessionCount = $pdo->prepare("SELECT COUNT(*) FROM table_sessions WHERE table_id = :table_id AND status IN ('open', 'payment_pending')");
     $sessionCount->execute(['table_id' => $tableId]);
     assert_test((int) $sessionCount->fetchColumn() === 0, 'selecionar uma mesa não deve criar sessão antes do pedido');
@@ -131,10 +133,15 @@ try {
     $duplicate = OrderService::create(['table_id' => $tableId, 'idempotency_key' => $firstKey, 'items' => [['product_id' => $juiceId, 'quantity' => 1]]], $waiter);
     assert_test($duplicate['id'] === $order['id'] && !empty($duplicate['duplicate']), 'idempotência deve retornar o mesmo pedido');
 
-    $kitchen = ['id' => $users['kitchen'], 'role' => 'kitchen', 'name' => 'Cozinha Teste'];
+    $initialPoll = OrderService::poll($counter, 0);
+    $initialOrderIds = array_column($initialPoll['orders'], 'id');
+    assert_test($initialPoll['changed'] && in_array($order['id'], $initialOrderIds, true), 'balcão deve receber o primeiro pedido no polling');
+    $eventCursor = $initialPoll['last_event_id'];
+    $unchangedPoll = OrderService::poll($counter, $eventCursor);
+    assert_test(!$unchangedPoll['changed'] && $unchangedPoll['orders'] === [], 'polling sem evento novo não deve reenviar os pedidos');
+
     OrderService::changeStatus($order['id'], 'preparing', $kitchen);
     OrderService::changeStatus($order['id'], 'ready', $kitchen);
-    $counter = ['id' => $users['counter'], 'role' => 'counter', 'name' => 'Caixa Teste'];
     OrderService::changeStatus($order['id'], 'delivered', $counter);
 
     $second = OrderService::create([
@@ -143,6 +150,11 @@ try {
         'items' => [['product_id' => $dessertId, 'quantity' => 1, 'notes' => '', 'modifier_ids' => []]],
     ], $waiter);
     assert_test($second['total'] === '15.00', 'segundo pedido deve ser independente');
+    foreach ([$counter, $kitchen, $waiter] as $pollUser) {
+        $updatedPoll = OrderService::poll($pollUser, $eventCursor);
+        assert_test($updatedPoll['changed'], 'cada perfil operacional deve receber a atualização do pedido');
+        assert_test(in_array($second['id'], array_column($updatedPoll['orders'], 'id'), true), 'pedido novo deve chegar ao garçom, balcão e cozinha');
+    }
     $pendingDetails = TableService::details($tableId);
     assert_test(!$pendingDetails['can_finalize_payment'] && $pendingDetails['pending_order_count'] === 1, 'pagamento deve aguardar pedido pendente');
 

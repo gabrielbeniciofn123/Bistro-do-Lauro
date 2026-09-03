@@ -137,6 +137,7 @@ O teste de integração em `tests/integration.php` só executa quando o nome do 
 ```bash
 php tests/access-separation.php
 php tests/table-status-regression.php
+php tests/realtime-regression.php
 PDV_TEST_CONFIRM=1 php tests/integration.php
 ```
 

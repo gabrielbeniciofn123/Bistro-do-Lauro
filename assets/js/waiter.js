@@ -4,6 +4,7 @@
   if (!app) return;
   const userId = app.dataset.userId;
   const state = { tables: [], catalog: [], session: null, cart: [], category: "all", lastEventId: 0, pendingKey: null };
+  let tableLoadPromise = null;
   const tableLabels = { available: "Disponível", occupied: "Ocupada", waiting_order: "Aguardando pedido", bill_requested: "Conta solicitada" };
   const statusLabels = { new: "Novo", accepted: "Aceito", preparing: "Em preparo", ready: "Pronto", delivered: "Entregue", cancelled: "Cancelado" };
 
@@ -23,12 +24,19 @@
   }
   function clearDraft() { if (draftKey()) localStorage.removeItem(draftKey()); state.cart = []; state.pendingKey = null; }
 
-  async function loadTables() {
-    const data = await PDV.request("/api/tables/list.php");
-    state.tables = data.tables;
-    const areas = [...new Set(state.tables.map((table) => table.area_name).filter(Boolean))];
-    document.getElementById("areaFilter").innerHTML = '<option value="">Todos os salões</option>' + areas.map((area) => `<option>${PDV.escapeHtml(area)}</option>`).join("");
-    renderTables();
+  function loadTables() {
+    if (tableLoadPromise) return tableLoadPromise;
+    tableLoadPromise = (async () => {
+      const data = await PDV.request("/api/tables/list.php");
+      state.tables = data.tables;
+      const areas = [...new Set(state.tables.map((table) => table.area_name).filter(Boolean))];
+      const areaFilter = document.getElementById("areaFilter");
+      const selectedArea = areaFilter.value;
+      areaFilter.innerHTML = '<option value="">Todos os salões</option>' + areas.map((area) => `<option>${PDV.escapeHtml(area)}</option>`).join("");
+      if (areas.includes(selectedArea)) areaFilter.value = selectedArea;
+      renderTables();
+    })().finally(() => { tableLoadPromise = null; });
+    return tableLoadPromise;
   }
 
   function renderTables() {
@@ -189,12 +197,9 @@
   }
 
   async function pollOrders() {
-    if (!document.getElementById("ordersView") || document.getElementById("ordersView").classList.contains("hidden")) return;
-    try {
-      const data = await PDV.request(`/api/orders/poll.php?since_event_id=${state.lastEventId}`);
-      state.lastEventId = data.last_event_id;
-      if (data.changed) document.getElementById("waiterOrdersList").innerHTML = data.orders.length ? data.orders.map((order) => `<article class="order-card ${order.status}"><div class="order-head"><div><h4>Mesa ${PDV.escapeHtml(order.table_number)} · #${order.id}</h4><span class="order-meta">${PDV.dateTime(order.created_at)}</span></div><span class="badge badge-info">${statusLabels[order.status]}</span></div><div class="order-items">${order.items.filter((item) => item.status !== "cancelled").map((item) => `<div class="order-item"><strong>${item.quantity}× ${PDV.escapeHtml(item.product_name)}</strong>${item.notes ? `<span class="order-note">${PDV.escapeHtml(item.notes)}</span>` : ""}</div>`).join("")}</div></article>`).join("") : '<div class="empty-state"><p>Nenhum pedido em acompanhamento.</p></div>';
-    } catch (error) { /* a próxima tentativa ocorre automaticamente */ }
+    const data = await PDV.request(`/api/orders/poll.php?since_event_id=${state.lastEventId}`);
+    state.lastEventId = Math.max(state.lastEventId, data.last_event_id);
+    if (data.changed) document.getElementById("waiterOrdersList").innerHTML = data.orders.length ? data.orders.map((order) => `<article class="order-card ${order.status}"><div class="order-head"><div><h4>Mesa ${PDV.escapeHtml(order.table_number)} · #${order.id}</h4><span class="order-meta">${PDV.dateTime(order.created_at)}</span></div><span class="badge badge-info">${statusLabels[order.status]}</span></div><div class="order-items">${order.items.filter((item) => item.status !== "cancelled").map((item) => `<div class="order-item"><strong>${item.quantity}× ${PDV.escapeHtml(item.product_name)}</strong>${item.notes ? `<span class="order-note">${PDV.escapeHtml(item.notes)}</span>` : ""}</div>`).join("")}</div></article>`).join("") : '<div class="empty-state"><p>Nenhum pedido em acompanhamento.</p></div>';
   }
 
   document.getElementById("waiterTablesGrid").addEventListener("click", (event) => { const card = event.target.closest("[data-table-id]"); if (card) selectTable(Number(card.dataset.tableId)); });
@@ -207,9 +212,17 @@
   document.getElementById("openCart").addEventListener("click", openCart);
   document.getElementById("requestBillButton").addEventListener("click", requestBill);
 
-  if (app.dataset.initialView === "orders") { pollOrders(); setInterval(pollOrders, 2000); }
-  else loadTables().then(() => {
-    const requestedTable = Number(new URLSearchParams(window.location.search).get("table_id"));
-    if (requestedTable) selectTable(requestedTable);
-  }).catch((error) => PDV.toast(error.message, "error", 6000));
+  if (app.dataset.initialView === "orders") {
+    PDV.startPolling(pollOrders, { errorMessage: "Não foi possível atualizar seus pedidos. Uma nova tentativa será feita automaticamente." });
+  } else {
+    let requestedTablePending = true;
+    PDV.startPolling(async () => {
+      await loadTables();
+      if (requestedTablePending) {
+        requestedTablePending = false;
+        const requestedTable = Number(new URLSearchParams(window.location.search).get("table_id"));
+        if (requestedTable) await selectTable(requestedTable);
+      }
+    }, { errorMessage: "Não foi possível atualizar as mesas. Uma nova tentativa será feita automaticamente." });
+  }
 })();

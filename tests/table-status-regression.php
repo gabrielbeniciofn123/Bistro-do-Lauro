@@ -22,7 +22,7 @@ assert_table_status(str_contains($waiterSource, '{ table_id: state.session.table
 assert_table_status(str_contains($waiterSource, '{ table_session_id: state.session.id }'), 'pedidos seguintes devem referenciar a sessão aberta');
 
 assert_table_status(is_string($counterSource), 'não foi possível ler o frontend do balcão');
-assert_table_status(str_contains($counterSource, 'setInterval(() => loadTables().catch(() => {}), 2000)'), 'mesas do balcão devem atualizar a cada dois segundos');
+assert_table_status(str_contains($counterSource, 'PDV.startPolling(loadTables'), 'mesas do balcão devem usar a atualização automática compartilhada');
 assert_table_status(str_contains($counterSource, 'class="area-group"'), 'mesas devem ser agrupadas por salão no balcão');
 assert_table_status(str_contains($counterSource, 'Finalizar pagamento'), 'detalhes da mesa devem oferecer finalização do pagamento');
 assert_table_status(str_contains($counterSource, 'session.can_finalize_payment'), 'botão de pagamento deve respeitar o estado retornado pelo backend');
