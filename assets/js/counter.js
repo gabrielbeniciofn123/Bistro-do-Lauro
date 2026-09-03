@@ -5,6 +5,7 @@
   const userId = app.dataset.userId;
   const soundStorageKey = `pdv_counter_${userId}_sound_enabled`;
   const state = { orders: [], tables: [], lastEventId: 0, knownNew: new Set(), initialized: false, soundEnabled: localStorage.getItem(soundStorageKey) === "1", settings: null };
+  let tableLoadPromise = null;
   const statusLabels = { new: "Novo", accepted: "Aceito", preparing: "Em preparo", ready: "Pronto", delivered: "Entregue", cancelled: "Cancelado" };
   const tableLabels = { available: "Disponível", occupied: "Ocupada", waiting_order: "Aguardando pedido", bill_requested: "Conta solicitada" };
   const methodLabels = { cash: "Dinheiro", pix: "PIX", debit_card: "Cartão de débito", credit_card: "Cartão de crédito", other: "Outro" };
@@ -95,12 +96,57 @@
     button.onclick = () => { state.soundEnabled = !state.soundEnabled; localStorage.setItem(soundStorageKey, state.soundEnabled ? "1" : "0"); button.textContent = state.soundEnabled ? "Som dos pedidos ativo" : "Ativar som dos pedidos"; button.classList.toggle("btn-success", state.soundEnabled); if (state.soundEnabled) playAlert(); };
   }
 
-  async function loadTables() {
-    const [tableData, sessionData] = await Promise.all([PDV.request("/api/tables/list.php"), PDV.request("/api/session.php")]);
-    state.tables = tableData.tables; state.settings = sessionData.settings; renderTables();
+  function loadTables() {
+    if (tableLoadPromise) return tableLoadPromise;
+    tableLoadPromise = (async () => {
+      const [tableData, sessionData] = await Promise.all([
+        PDV.request("/api/tables/list.php"),
+        state.settings ? Promise.resolve(null) : PDV.request("/api/session.php"),
+      ]);
+      state.tables = tableData.tables;
+      if (sessionData) state.settings = sessionData.settings;
+      renderTables();
+    })().finally(() => { tableLoadPromise = null; });
+    return tableLoadPromise;
   }
+
+  function tableBadgeClass(status) {
+    if (status === "available") return "badge-success";
+    if (status === "bill_requested") return "badge-info";
+    return "badge-warning";
+  }
+
+  function tableCard(table) {
+    const available = table.status === "available";
+    const label = tableLabels[table.status] || table.status;
+    const details = available
+      ? '<p class="table-card-empty">Livre para um novo atendimento</p>'
+      : `<div class="table-card-metrics"><span><small>Pedidos</small><strong>${Number(table.order_count)}</strong></span><span><small>Subtotal</small><strong>${PDV.money(table.subtotal)}</strong></span></div><div class="table-card-service"><span>${PDV.escapeHtml(table.waiter_name || "Garçom não informado")}</span><small>Aberta ${PDV.dateTime(table.opened_at)}</small></div><span class="table-card-action">Ver pedidos e pagamento →</span>`;
+    return `<button class="table-card table-overview-card ${table.status}" type="button" data-counter-table="${table.id}" aria-label="Mesa ${PDV.escapeHtml(table.number)}, ${PDV.escapeHtml(label)}"><span class="table-card-heading"><span class="table-number">Mesa ${PDV.escapeHtml(table.number)}</span><span class="badge ${tableBadgeClass(table.status)}">${PDV.escapeHtml(label)}</span></span>${table.name ? `<strong class="table-name">${PDV.escapeHtml(table.name)}</strong>` : ""}${details}</button>`;
+  }
+
   function renderTables() {
-    document.getElementById("counterTablesGrid").innerHTML = state.tables.map((table) => `<button class="table-card ${table.status}" data-counter-table="${table.id}"><span class="table-number">Mesa ${PDV.escapeHtml(table.number)}</span><span class="table-area">${PDV.escapeHtml(table.area_name || "Sem salão")}</span>${table.waiter_name ? `<small>${PDV.escapeHtml(table.waiter_name)} · ${table.order_count} pedido(s)</small>` : ""}<span class="badge ${table.status === "available" ? "badge-success" : table.status === "bill_requested" ? "badge-info" : "badge-warning"}">${PDV.escapeHtml(tableLabels[table.status] || table.status)}</span></button>`).join("");
+    const mount = document.getElementById("counterTablesGrid");
+    const groups = new Map();
+    state.tables.forEach((table) => {
+      const area = table.area_name || "Sem salão";
+      if (!groups.has(area)) groups.set(area, []);
+      groups.get(area).push(table);
+    });
+    mount.innerHTML = [...groups.entries()].map(([area, tables]) => {
+      const active = tables.filter((table) => table.status !== "available").length;
+      return `<section class="area-group"><header class="area-group-header"><div><span class="eyebrow">Salão</span><h3>${PDV.escapeHtml(area)}</h3></div><span>${tables.length} mesa(s) · ${active} em atendimento</span></header><div class="tables-grid">${tables.map(tableCard).join("")}</div></section>`;
+    }).join("") || '<div class="empty-state"><h3>Nenhuma mesa ativa</h3><p>Cadastre mesas e salões na administração.</p></div>';
+  }
+
+  function orderDetails(order) {
+    const badgeClass = order.status === "cancelled" ? "badge-neutral" : order.status === "ready" || order.status === "delivered" ? "badge-success" : order.status === "new" ? "badge-warning" : "badge-info";
+    const items = order.items.map((item) => {
+      const cancelled = item.status === "cancelled";
+      const modifiers = item.modifiers?.length ? `<small class="table-order-modifiers">${item.modifiers.map((modifier) => PDV.escapeHtml(modifier.modifier_name)).join(", ")}</small>` : "";
+      return `<div class="table-order-item ${cancelled ? "cancelled" : ""}"><div><strong>${item.quantity}× ${PDV.escapeHtml(item.product_name)}</strong>${modifiers}${item.notes ? `<span class="order-note">Obs.: ${PDV.escapeHtml(item.notes)}</span>` : ""}</div><span>${PDV.money(item.line_total)}</span></div>`;
+    }).join("");
+    return `<article class="table-order-card ${order.status}"><header><div><strong>Pedido #${order.id}</strong><small>${PDV.dateTime(order.created_at)} · ${Number(order.item_count)} item(ns)</small></div><span class="badge ${badgeClass}">${PDV.escapeHtml(statusLabels[order.status] || order.status)}</span></header><div class="table-order-items">${items}</div><footer><span>${PDV.escapeHtml(order.waiter_name)}</span><strong>${PDV.money(order.total)}</strong></footer></article>`;
   }
 
   async function openTable(tableId) {
@@ -111,9 +157,13 @@
     }
     try {
       const session = await PDV.request(`/api/tables/details.php?table_id=${tableId}`);
-      const body = `<div class="summary-list"><div class="summary-row"><span>Aberta às</span><strong>${PDV.dateTime(session.opened_at)}</strong></div><div class="summary-row"><span>Garçom</span><strong>${PDV.escapeHtml(session.waiter_name)}</strong></div></div><h3 style="margin-top:1.2rem">Pedidos</h3>${session.orders.map((order) => `<article class="order-item"><div class="summary-row"><strong>Pedido #${order.id}</strong><span>${PDV.money(order.total)}</span></div>${order.items.map((item) => `<div class="summary-row"><span>${item.quantity}× ${PDV.escapeHtml(item.product_name)}</span><span>${PDV.money(item.line_total)}</span></div>${item.notes ? `<span class="order-note">${PDV.escapeHtml(item.notes)}</span>` : ""}`).join("")}</article>`).join("") || '<p>Nenhum pedido enviado.</p>'}<div class="summary-row total"><strong>Subtotal</strong><strong>${PDV.money(session.subtotal)}</strong></div>`;
-      PDV.openModal({ title: `Mesa ${session.table_number} · ${PDV.escapeHtml(session.area_name || "")}`, body, large: true, footer: `<a class="btn btn-secondary" href="/print/account.php?session_id=${session.id}" target="_blank">Imprimir conta</a><button class="btn btn-success" id="closeTableButton" type="button">Finalizar mesa</button>` });
-      document.getElementById("closeTableButton").onclick = () => openPayment(session);
+      const paymentNotice = session.can_finalize_payment
+        ? '<div class="alert alert-success"><strong>Pronta para pagamento.</strong> Todos os pedidos desta mesa foram concluídos.</div>'
+        : `<div class="alert alert-warning"><strong>Pagamento ainda indisponível.</strong> Existem ${Number(session.pending_order_count)} pedido(s) em produção ou aguardando entrega.</div>`;
+      const body = `<section class="table-session-summary"><div><span class="eyebrow">Atendimento</span><h3>${PDV.escapeHtml(session.waiter_name)}</h3><p>Aberta em ${PDV.dateTime(session.opened_at)}</p></div><div class="table-session-total"><small>${Number(session.order_count)} pedido(s)</small><strong>${PDV.money(session.subtotal)}</strong><span>Subtotal da mesa</span></div></section>${paymentNotice}<div class="table-orders-heading"><h3>Pedidos da mesa</h3><span>Do mais antigo ao mais recente</span></div><div class="table-orders-list">${session.orders.map(orderDetails).join("") || '<div class="empty-state"><p>Nenhum pedido enviado.</p></div>'}</div>`;
+      const disabled = session.can_finalize_payment ? "" : " disabled";
+      PDV.openModal({ title: `Mesa ${session.table_number} · ${PDV.escapeHtml(session.area_name || "Sem salão")}`, body, large: true, footer: `<a class="btn btn-secondary" href="/print/account.php?session_id=${session.id}" target="_blank">Imprimir conta</a><button class="btn btn-success" id="closeTableButton" type="button"${disabled}>Finalizar pagamento</button>` });
+      if (session.can_finalize_payment) document.getElementById("closeTableButton").onclick = () => openPayment(session);
     } catch (error) { PDV.toast(error.message, "error"); }
   }
 

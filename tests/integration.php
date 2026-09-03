@@ -46,6 +46,16 @@ function assert_test(bool $condition, string $message): void
     }
 }
 
+function assert_domain_error(callable $operation, string $message): void
+{
+    try {
+        $operation();
+    } catch (DomainException) {
+        return;
+    }
+    throw new RuntimeException('Falha: ' . $message);
+}
+
 function cents_to_money(int $cents): string
 {
     return sprintf('%d.%02d', intdiv($cents, 100), $cents % 100);
@@ -74,6 +84,31 @@ try {
     $juiceId = (int) $pdo->lastInsertId();
     $productInsert->execute(['category' => $categoryId, 'name' => 'Sobremesa Teste', 'price' => '15.00']);
     $dessertId = (int) $pdo->lastInsertId();
+
+    AdminService::save('tables', [
+        'id' => $tableId,
+        'area_id' => $areaId,
+        'number' => 'T' . $suffix,
+        'name' => 'Mesa gerenciada',
+        'status' => 'occupied',
+        'active' => true,
+    ]);
+    $managedStatus = $pdo->prepare('SELECT status FROM restaurant_tables WHERE id = :id');
+    $managedStatus->execute(['id' => $tableId]);
+    assert_test($managedStatus->fetchColumn() === 'available', 'administração não deve forçar estado operacional da mesa');
+    $inactiveArea = AdminService::save('areas', ['name' => 'Área inativa ' . $suffix, 'sort_order' => 2, 'active' => false]);
+    assert_domain_error(
+        static fn () => AdminService::save('tables', ['area_id' => $inactiveArea['id'], 'number' => 'I' . $suffix, 'active' => true]),
+        'mesa não deve aceitar salão inativo'
+    );
+    assert_domain_error(
+        static fn () => AdminService::save('areas', ['id' => $areaId, 'name' => 'Salão Teste ' . $suffix, 'sort_order' => 1, 'active' => false]),
+        'salão com mesas não deve ser desativado pela edição'
+    );
+    assert_domain_error(
+        static fn () => AdminService::deactivate('areas', $areaId),
+        'salão com mesas não deve ser desativado pela ação de exclusão'
+    );
 
     $waiter = ['id' => $users['waiter'], 'role' => 'waiter', 'name' => 'Garçom Teste'];
     $sessionCount = $pdo->prepare("SELECT COUNT(*) FROM table_sessions WHERE table_id = :table_id AND status IN ('open', 'payment_pending')");
@@ -108,6 +143,8 @@ try {
         'items' => [['product_id' => $dessertId, 'quantity' => 1, 'notes' => '', 'modifier_ids' => []]],
     ], $waiter);
     assert_test($second['total'] === '15.00', 'segundo pedido deve ser independente');
+    $pendingDetails = TableService::details($tableId);
+    assert_test(!$pendingDetails['can_finalize_payment'] && $pendingDetails['pending_order_count'] === 1, 'pagamento deve aguardar pedido pendente');
 
     $pdo->prepare('INSERT INTO restaurant_tables (area_id, number, status, active) VALUES (:area, :number, :status, 1)')
         ->execute(['area' => $areaId, 'number' => 'L' . $suffix, 'status' => 'available']);
@@ -133,6 +170,7 @@ try {
     OrderService::changeStatus($second['id'], 'delivered', $counter);
     $details = TableService::details($tableId);
     assert_test(count($details['orders']) === 2 && $details['subtotal'] === '102.80', 'mesa deve manter dois pedidos');
+    assert_test($details['can_finalize_payment'] && $details['pending_order_count'] === 0, 'pagamento deve ser liberado após concluir pedidos');
 
     TableService::requestBill($tableId);
     $repeatedBill = TableService::requestBill($tableId);

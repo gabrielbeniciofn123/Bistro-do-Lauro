@@ -5,14 +5,15 @@ final class AdminService
 {
     private const RESOURCES = ['areas', 'tables', 'categories', 'products', 'users', 'modifier_groups', 'modifiers'];
     private const ROLES = ['admin', 'counter', 'waiter', 'kitchen'];
-    private const TABLE_STATUSES = ['available', 'occupied', 'waiting_order', 'bill_requested', 'inactive'];
 
     public static function list(string $resource): array
     {
         self::assertResource($resource);
         $pdo = Database::connection();
         $sql = match ($resource) {
-            'areas' => 'SELECT id, name, sort_order, active, created_at FROM areas WHERE deleted_at IS NULL ORDER BY sort_order, name',
+            'areas' => "SELECT a.id, a.name, a.sort_order, a.active, a.created_at,
+                              (SELECT COUNT(*) FROM restaurant_tables t WHERE t.area_id = a.id AND t.deleted_at IS NULL) AS table_count
+                       FROM areas a WHERE a.deleted_at IS NULL ORDER BY a.sort_order, a.name",
             'tables' => "SELECT t.id, t.number, t.name, t.area_id, a.name AS area_name, t.status, t.active, t.created_at
                          FROM restaurant_tables t LEFT JOIN areas a ON a.id = t.area_id
                          WHERE t.deleted_at IS NULL ORDER BY a.sort_order, CAST(t.number AS UNSIGNED), t.number",
@@ -91,6 +92,9 @@ final class AdminService
                     throw new DomainException('Finalize a mesa antes de desativá-la.');
                 }
             }
+            if ($resource === 'areas') {
+                self::assertAreaHasNoTables($pdo, $id);
+            }
             $statement = $pdo->prepare("UPDATE {$table} SET active = 0, deleted_at = NOW() WHERE id = :id AND deleted_at IS NULL");
             $statement->execute(['id' => $id]);
             if ($statement->rowCount() !== 1) {
@@ -121,26 +125,30 @@ final class AdminService
             'sort_order' => self::integer($data['sort_order'] ?? 0, 0),
             'active' => self::boolean($data['active'] ?? true),
         ];
+        if ($id !== null && !$values['active']) {
+            self::assertAreaHasNoTables($pdo, $id);
+        }
         return self::upsert($pdo, 'areas', $values, $id);
     }
 
     private static function saveTable(PDO $pdo, array $data, ?int $id): int
     {
-        $status = (string) ($data['status'] ?? 'available');
-        if (!in_array($status, self::TABLE_STATUSES, true)) {
-            throw new DomainException('Status de mesa inválido.');
-        }
         $areaId = empty($data['area_id']) ? null : request_int($data, 'area_id');
+        if ($areaId !== null) {
+            $area = $pdo->prepare('SELECT id FROM areas WHERE id = :id AND active = 1 AND deleted_at IS NULL');
+            $area->execute(['id' => $areaId]);
+            if (!$area->fetchColumn()) {
+                throw new DomainException('Selecione um salão ativo.');
+            }
+        }
+        $active = self::boolean($data['active'] ?? true);
         $values = [
             'area_id' => $areaId,
             'number' => self::requiredString($data, 'number', 20),
             'name' => self::optionalString($data['name'] ?? null, 100),
-            'status' => $status,
-            'active' => self::boolean($data['active'] ?? true),
+            'status' => $active ? 'available' : 'inactive',
+            'active' => $active,
         ];
-        if (!$values['active']) {
-            $values['status'] = 'inactive';
-        }
         if ($id !== null) {
             $current = $pdo->prepare(
                 "SELECT t.status,
@@ -153,13 +161,22 @@ final class AdminService
                 throw new DomainException('Mesa não encontrada.');
             }
             if ((int) $currentTable['active_sessions'] > 0) {
-                if (!$values['active']) {
+                if (!$active) {
                     throw new DomainException('Finalize o atendimento antes de desativar a mesa.');
                 }
                 $values['status'] = $currentTable['status'];
             }
         }
         return self::upsert($pdo, 'restaurant_tables', $values, $id);
+    }
+
+    private static function assertAreaHasNoTables(PDO $pdo, int $areaId): void
+    {
+        $tables = $pdo->prepare('SELECT COUNT(*) FROM restaurant_tables WHERE area_id = :id AND deleted_at IS NULL');
+        $tables->execute(['id' => $areaId]);
+        if ((int) $tables->fetchColumn() > 0) {
+            throw new DomainException('Mova ou desative as mesas deste salão antes de desativá-lo.');
+        }
     }
 
     private static function saveCategory(PDO $pdo, array $data, ?int $id): int

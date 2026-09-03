@@ -118,6 +118,11 @@ final class TableService
         foreach ($orders as &$order) {
             $order['id'] = (int) $order['id'];
             $order['items'] = OrderService::items((int) $order['id'], $pdo);
+            $order['item_count'] = array_reduce(
+                $order['items'],
+                static fn (int $total, array $item): int => $total + ($item['status'] === 'cancelled' ? 0 : (int) $item['quantity']),
+                0
+            );
         }
         unset($order);
 
@@ -130,6 +135,13 @@ final class TableService
         $session['table_id'] = (int) $session['table_id'];
         $session['opened_by'] = (int) $session['opened_by'];
         $session['closed_by'] = $session['closed_by'] === null ? null : (int) $session['closed_by'];
+        $session['order_count'] = count(array_filter($orders, static fn (array $order): bool => $order['status'] !== 'cancelled'));
+        $session['pending_order_count'] = count(array_filter(
+            $orders,
+            static fn (array $order): bool => in_array($order['status'], ['new', 'accepted', 'preparing', 'ready'], true)
+        ));
+        $session['can_finalize_payment'] = in_array($session['status'], ['open', 'payment_pending'], true)
+            && $session['pending_order_count'] === 0;
         $session['orders'] = $orders;
         $session['payments'] = $paymentStatement->fetchAll();
         return $session;

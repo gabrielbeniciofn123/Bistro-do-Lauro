@@ -2,6 +2,8 @@
 
 Sistema de ponto de venda para restaurante desenvolvido em PHP 8, MySQL/MariaDB, HTML, CSS e JavaScript puro. O cardápio institucional existente foi preservado, e o acesso **Administrador** direciona ao PDV.
 
+O planejamento e o estado atual das fases estão em [`ROADMAP.md`](ROADMAP.md).
+
 ## O que está incluído
 
 - Login seguro com sessões e perfis de administrador, balcão, garçom e cozinha.

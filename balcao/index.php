@@ -23,8 +23,8 @@ render_app_start($titles[$view], $view, [
         <section class="board-column"><header class="board-heading"><h3>Prontos</h3><span class="badge badge-success" id="readyCount">0</span></header><div class="board-list" id="readyOrders"></div></section>
     </div>
 <?php elseif ($view === 'tables'): ?>
-    <header class="page-header"><div><span class="eyebrow">Salão</span><h2>Mesas do restaurante</h2><p>Abra detalhes, imprima a conta ou finalize o pagamento.</p></div><button class="btn btn-secondary" id="refreshCounterTables" type="button">Atualizar</button></header>
-    <div class="tables-grid" id="counterTablesGrid"></div>
+    <header class="page-header"><div><span class="eyebrow">Salões e mesas</span><h2>Atendimentos por mesa</h2><p>Consulte os pedidos de cada mesa e finalize o pagamento quando o atendimento estiver concluído.</p></div><button class="btn btn-secondary" id="refreshCounterTables" type="button">Atualizar</button></header>
+    <div class="areas-list" id="counterTablesGrid" aria-live="polite"></div>
 <?php else: ?>
     <header class="page-header"><div><span class="eyebrow">Vendas</span><h2>Histórico</h2><p>Consulte vendas finalizadas, pagamentos e comprovantes.</p></div></header>
     <section class="panel"><div class="panel-body" id="historyMount"></div></section>

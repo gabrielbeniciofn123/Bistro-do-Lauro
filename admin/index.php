@@ -28,7 +28,7 @@ render_app_start($titles[$view], $view, ['subtitle' => 'Administração do resta
 <?php elseif ($view === 'tables'): ?>
     <header class="page-header"><div><span class="eyebrow">Organização</span><h2>Mesas e salões</h2><p>Cadastre os setores e defina todas as mesas da operação.</p></div></header>
     <div style="display:grid;gap:1rem">
-        <section class="panel" data-admin-resource="areas"><header class="panel-header"><h3>Salões e setores</h3><button class="btn btn-primary btn-sm" data-add-resource="areas">Adicionar salão</button></header><div class="table-wrap"><table class="data-table"><thead><tr><th>Nome</th><th>Ordem</th><th>Status</th><th></th></tr></thead><tbody data-resource-body="areas"></tbody></table></div></section>
+        <section class="panel" data-admin-resource="areas"><header class="panel-header"><h3>Salões e setores</h3><button class="btn btn-primary btn-sm" data-add-resource="areas">Adicionar salão</button></header><div class="table-wrap"><table class="data-table"><thead><tr><th>Nome</th><th>Mesas</th><th>Ordem</th><th>Status</th><th></th></tr></thead><tbody data-resource-body="areas"></tbody></table></div></section>
         <section class="panel" data-admin-resource="tables"><header class="panel-header"><h3>Mesas</h3><button class="btn btn-primary btn-sm" data-add-resource="tables">Adicionar mesa</button></header><div class="table-wrap"><table class="data-table"><thead><tr><th>Mesa</th><th>Nome</th><th>Salão</th><th>Situação</th><th></th></tr></thead><tbody data-resource-body="tables"></tbody></table></div></section>
     </div>
 <?php elseif ($view === 'modifiers'): ?>
