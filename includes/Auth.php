@@ -4,6 +4,15 @@ declare(strict_types=1);
 final class Auth
 {
     private const ROLES = ['admin', 'counter', 'waiter', 'kitchen'];
+    private const PERMISSIONS = [
+        'panel.waiter' => ['admin', 'waiter'],
+        'panel.counter' => ['admin', 'counter'],
+        'tables.read' => ['admin', 'counter', 'waiter'],
+        'tables.open' => ['admin', 'waiter'],
+        'tables.request_bill' => ['admin', 'waiter'],
+        'catalog.read' => ['admin', 'waiter'],
+        'orders.create' => ['admin', 'waiter'],
+    ];
 
     public static function user(): ?array
     {
@@ -107,12 +116,25 @@ final class Auth
     {
         $user = self::requireLogin();
         if (!in_array($user['role'], $roles, true)) {
-            if (str_contains($_SERVER['REQUEST_URI'] ?? '', '/api/')) {
-                json_error('Você não tem permissão para esta ação.', 403);
-            }
-            http_response_code(403);
-            require __DIR__ . '/views/forbidden.php';
-            exit;
+            self::denyForbidden();
+        }
+        return $user;
+    }
+
+    public static function roleCan(string $role, string $permission): bool
+    {
+        return in_array($role, self::PERMISSIONS[$permission] ?? [], true);
+    }
+
+    public static function requirePermission(string $permission): array
+    {
+        if (!array_key_exists($permission, self::PERMISSIONS)) {
+            throw new LogicException('Permissão desconhecida: ' . $permission);
+        }
+
+        $user = self::requireLogin();
+        if (!self::roleCan((string) $user['role'], $permission)) {
+            self::denyForbidden();
         }
         return $user;
     }
@@ -158,6 +180,16 @@ final class Auth
             json_error('Faça login para continuar.', 401);
         }
         header('Location: /login.php');
+        exit;
+    }
+
+    private static function denyForbidden(): never
+    {
+        if (str_contains($_SERVER['REQUEST_URI'] ?? '', '/api/')) {
+            json_error('Você não tem permissão para esta ação.', 403);
+        }
+        http_response_code(403);
+        require __DIR__ . '/views/forbidden.php';
         exit;
     }
 }

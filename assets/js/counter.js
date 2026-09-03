@@ -2,7 +2,9 @@
   "use strict";
   const app = document.getElementById("counterApp");
   if (!app || app.dataset.view === "history") return;
-  const state = { orders: [], tables: [], lastEventId: 0, knownNew: new Set(), initialized: false, soundEnabled: localStorage.getItem("pdv_sound_enabled") === "1", settings: null };
+  const userId = app.dataset.userId;
+  const soundStorageKey = `pdv_counter_${userId}_sound_enabled`;
+  const state = { orders: [], tables: [], lastEventId: 0, knownNew: new Set(), initialized: false, soundEnabled: localStorage.getItem(soundStorageKey) === "1", settings: null };
   const statusLabels = { new: "Novo", accepted: "Aceito", preparing: "Em preparo", ready: "Pronto", delivered: "Entregue", cancelled: "Cancelado" };
   const tableLabels = { available: "Disponível", occupied: "Ocupada", waiting_order: "Aguardando pedido", bill_requested: "Conta solicitada" };
   const methodLabels = { cash: "Dinheiro", pix: "PIX", debit_card: "Cartão de débito", credit_card: "Cartão de crédito", other: "Outro" };
@@ -90,7 +92,7 @@
     if (!button) return;
     button.textContent = state.soundEnabled ? "Som dos pedidos ativo" : "Ativar som dos pedidos";
     button.classList.toggle("btn-success", state.soundEnabled);
-    button.onclick = () => { state.soundEnabled = !state.soundEnabled; localStorage.setItem("pdv_sound_enabled", state.soundEnabled ? "1" : "0"); button.textContent = state.soundEnabled ? "Som dos pedidos ativo" : "Ativar som dos pedidos"; button.classList.toggle("btn-success", state.soundEnabled); if (state.soundEnabled) playAlert(); };
+    button.onclick = () => { state.soundEnabled = !state.soundEnabled; localStorage.setItem(soundStorageKey, state.soundEnabled ? "1" : "0"); button.textContent = state.soundEnabled ? "Som dos pedidos ativo" : "Ativar som dos pedidos"; button.classList.toggle("btn-success", state.soundEnabled); if (state.soundEnabled) playAlert(); };
   }
 
   async function loadTables() {
@@ -104,20 +106,20 @@
   async function openTable(tableId) {
     const table = state.tables.find((item) => item.id === tableId);
     if (table.status === "available") {
-      PDV.openModal({ title: `Mesa ${table.number}`, body: '<div class="empty-state"><span class="status-icon">✓</span><h3>Mesa disponível</h3><p>Use “Adicionar itens” para abrir a mesa e iniciar o atendimento.</p></div>', footer: `<a class="btn btn-primary" href="/garcom/?table_id=${table.id}">Adicionar itens</a><button class="btn btn-secondary" data-close-modal>Fechar</button>` });
+      PDV.openModal({ title: `Mesa ${table.number}`, body: '<div class="empty-state"><span class="status-icon">✓</span><h3>Mesa disponível</h3><p>A mesa ainda não possui atendimento aberto.</p></div>', footer: '<button class="btn btn-secondary" data-close-modal>Fechar</button>' });
       return;
     }
     try {
       const session = await PDV.request(`/api/tables/details.php?table_id=${tableId}`);
       const body = `<div class="summary-list"><div class="summary-row"><span>Aberta às</span><strong>${PDV.dateTime(session.opened_at)}</strong></div><div class="summary-row"><span>Garçom</span><strong>${PDV.escapeHtml(session.waiter_name)}</strong></div></div><h3 style="margin-top:1.2rem">Pedidos</h3>${session.orders.map((order) => `<article class="order-item"><div class="summary-row"><strong>Pedido #${order.id}</strong><span>${PDV.money(order.total)}</span></div>${order.items.map((item) => `<div class="summary-row"><span>${item.quantity}× ${PDV.escapeHtml(item.product_name)}</span><span>${PDV.money(item.line_total)}</span></div>${item.notes ? `<span class="order-note">${PDV.escapeHtml(item.notes)}</span>` : ""}`).join("")}</article>`).join("") || '<p>Nenhum pedido enviado.</p>'}<div class="summary-row total"><strong>Subtotal</strong><strong>${PDV.money(session.subtotal)}</strong></div>`;
-      PDV.openModal({ title: `Mesa ${session.table_number} · ${PDV.escapeHtml(session.area_name || "")}`, body, large: true, footer: `<a class="btn btn-secondary" href="/garcom/?table_id=${tableId}">Adicionar itens</a><a class="btn btn-secondary" href="/print/account.php?session_id=${session.id}" target="_blank">Imprimir conta</a><button class="btn btn-success" id="closeTableButton" type="button">Finalizar mesa</button>` });
+      PDV.openModal({ title: `Mesa ${session.table_number} · ${PDV.escapeHtml(session.area_name || "")}`, body, large: true, footer: `<a class="btn btn-secondary" href="/print/account.php?session_id=${session.id}" target="_blank">Imprimir conta</a><button class="btn btn-success" id="closeTableButton" type="button">Finalizar mesa</button>` });
       document.getElementById("closeTableButton").onclick = () => openPayment(session);
     } catch (error) { PDV.toast(error.message, "error"); }
   }
 
   function openPayment(session) {
     const servicePercent = state.settings.service_fee_enabled ? Number(state.settings.service_fee_percent) : 0;
-    const paymentStorageKey = `pdv_payment_key_${session.id}`;
+    const paymentStorageKey = `pdv_counter_${userId}_payment_key_${session.id}`;
     const paymentKey = sessionStorage.getItem(paymentStorageKey) || (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`);
     sessionStorage.setItem(paymentStorageKey, paymentKey);
     const body = `<form id="paymentForm" class="form-stack"><div class="summary-list"><div class="summary-row"><span>Subtotal</span><strong id="paymentSubtotal" data-value="${session.subtotal}">${PDV.money(session.subtotal)}</strong></div><div class="summary-row"><span>Taxa de serviço</span><strong id="paymentService">${PDV.money(Number(session.subtotal) * servicePercent / 100)}</strong></div><div class="summary-row total"><span>Total</span><strong id="paymentTotal"></strong></div></div><label class="check-field"><input name="apply_service_fee" type="checkbox" ${state.settings.service_fee_enabled ? "checked" : ""}><span>Aplicar taxa de serviço de ${servicePercent}%</span></label><div class="form-grid"><label class="field"><span>Desconto</span><input name="discount" inputmode="decimal" value="0.00"></label><label class="field"><span>Acréscimo</span><input name="surcharge" inputmode="decimal" value="0.00"></label></div><div><div class="panel-header" style="padding-left:0;padding-right:0"><h3>Formas de pagamento</h3><button class="btn btn-secondary btn-sm" id="addPayment" type="button">Dividir pagamento</button></div><div class="form-stack" id="paymentRows"></div></div><p id="paymentDifference" class="muted"></p></form>`;

@@ -2,11 +2,12 @@
   "use strict";
   const app = document.getElementById("waiterApp");
   if (!app) return;
+  const userId = app.dataset.userId;
   const state = { tables: [], catalog: [], session: null, cart: [], category: "all", lastEventId: 0, pendingKey: null };
   const tableLabels = { available: "Disponível", occupied: "Ocupada", waiting_order: "Aguardando pedido", bill_requested: "Conta solicitada" };
   const statusLabels = { new: "Novo", accepted: "Aceito", preparing: "Em preparo", ready: "Pronto", delivered: "Entregue", cancelled: "Cancelado" };
 
-  function draftKey() { return state.session ? `pdv_cart_${state.session.id}` : null; }
+  function draftKey() { return state.session ? `pdv_waiter_${userId}_cart_${state.session.id}` : null; }
   function saveDraft() {
     if (!draftKey()) return;
     localStorage.setItem(draftKey(), JSON.stringify({ cart: state.cart, pendingKey: state.pendingKey, savedAt: Date.now() }));

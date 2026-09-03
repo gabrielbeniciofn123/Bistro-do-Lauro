@@ -3,14 +3,18 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/includes/bootstrap.php';
 require_once dirname(__DIR__) . '/includes/views/layout.php';
 
-Auth::requireRoles('counter', 'admin');
+$user = Auth::requirePermission('panel.counter');
 $views = ['orders', 'tables', 'history'];
 $view = in_array($_GET['view'] ?? 'orders', $views, true) ? (string) ($_GET['view'] ?? 'orders') : 'orders';
 $titles = ['orders' => 'Painel do balcão', 'tables' => 'Controle de mesas', 'history' => 'Histórico de vendas'];
 $soundButton = $view === 'orders' ? '<button class="btn btn-secondary btn-sm" id="enableSound" type="button">Ativar som dos pedidos</button>' : '';
-render_app_start($titles[$view], $view, ['subtitle' => 'Atualização automática a cada 2 segundos', 'topbar_actions' => $soundButton]);
+render_app_start($titles[$view], $view, [
+    'subtitle' => 'Atualização automática a cada 2 segundos',
+    'topbar_actions' => $soundButton,
+    'navigation_role' => 'counter',
+]);
 ?>
-<div id="counterApp" data-view="<?= e($view) ?>">
+<div id="counterApp" data-area="counter" data-user-id="<?= (int) $user['id'] ?>" data-view="<?= e($view) ?>">
 <?php if ($view === 'orders'): ?>
     <header class="page-header"><div><span class="eyebrow">Tempo real</span><h2>Fluxo de pedidos</h2><p>Novos pedidos, preparação e entrega em uma única tela.</p></div><button class="btn btn-secondary" id="refreshOrders" type="button">Atualizar agora</button></header>
     <div class="board">

@@ -3,13 +3,14 @@ declare(strict_types=1);
 require dirname(__DIR__) . '/includes/bootstrap.php';
 require_once dirname(__DIR__) . '/includes/views/layout.php';
 
-$user = Auth::requireRoles('waiter', 'admin', 'counter');
+$user = Auth::requirePermission('panel.waiter');
 $showOrders = ($_GET['view'] ?? '') === 'orders';
 render_app_start($showOrders ? 'Meus pedidos' : 'Atendimento de mesas', $showOrders ? 'orders' : 'tables', [
     'subtitle' => 'Olá, ' . $user['name'],
+    'navigation_role' => 'waiter',
 ]);
 ?>
-<div id="waiterApp" data-initial-view="<?= $showOrders ? 'orders' : 'tables' ?>">
+<div id="waiterApp" data-area="waiter" data-user-id="<?= (int) $user['id'] ?>" data-initial-view="<?= $showOrders ? 'orders' : 'tables' ?>">
     <section id="tablesView" class="<?= $showOrders ? 'hidden' : '' ?>">
         <header class="page-header"><div><span class="eyebrow">Salão</span><h2>Selecione uma mesa</h2><p>Abra uma mesa disponível ou continue um atendimento em andamento.</p></div><button class="btn btn-secondary" id="refreshTables" type="button">Atualizar</button></header>
         <div class="toolbar"><input class="input search" id="tableSearch" type="search" placeholder="Buscar mesa ou salão"><select class="input" id="areaFilter" style="max-width:220px"><option value="">Todos os salões</option></select></div>

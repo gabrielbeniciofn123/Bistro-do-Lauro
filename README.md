@@ -73,6 +73,8 @@ No cPanel, abra **SSL/TLS Status** e confirme que o AutoSSL está ativo para o d
 
 Não existe senha padrão. O primeiro administrador é criado no instalador.
 
+Os perfis operacionais são separados: o garçom abre mesas e envia pedidos pela área `/garcom/`; o balcão acompanha pedidos, consulta mesas e realiza o fechamento pela área `/balcao/`. O administrador pode supervisionar as duas áreas, cada uma mantendo sua própria navegação.
+
 ## Primeiro preparo do restaurante
 
 1. Entre como administrador.
@@ -131,5 +133,6 @@ Acesse `http://127.0.0.1:8080/install/` se ainda não tiver criado o banco pelo 
 O teste de integração em `tests/integration.php` só executa quando o nome do banco termina em `_test` e a variável `PDV_TEST_CONFIRM=1` está definida. Ele usa uma transação e desfaz os dados ao final.
 
 ```bash
+php tests/access-separation.php
 PDV_TEST_CONFIRM=1 php tests/integration.php
 ```

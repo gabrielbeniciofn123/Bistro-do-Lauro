@@ -46,6 +46,10 @@ function nav_items(string $role): array
 function render_app_start(string $title, string $active, array $options = []): void
 {
     $user = Auth::requireLogin();
+    $navigationRole = (string) ($options['navigation_role'] ?? $user['role']);
+    if (!in_array($navigationRole, ['admin', 'counter', 'waiter', 'kitchen'], true)) {
+        throw new InvalidArgumentException('Contexto de navegação inválido.');
+    }
     $bodyClass = $options['body_class'] ?? '';
     $subtitle = $options['subtitle'] ?? role_label($user['role']);
     $newOrderCount = (int) ($options['new_order_count'] ?? 0);
@@ -60,16 +64,17 @@ function render_app_start(string $title, string $active, array $options = []): v
     <title><?= e($title) ?> — Bistrô São Lauro PDV</title>
     <link rel="stylesheet" href="/assets/css/app.css">
 </head>
-<body class="<?= e($bodyClass) ?>">
+<body class="<?= e($bodyClass) ?>" data-app-area="<?= e($navigationRole) ?>">
 <div class="app-shell">
     <aside class="sidebar" id="sidebar">
-        <a class="brand-lockup" href="<?= e(Auth::redirectPath($user['role'])) ?>"><span class="brand-mark">BS</span><span><strong>Bistrô São Lauro</strong><small>Sistema de gestão</small></span></a>
+        <a class="brand-lockup" href="<?= e(Auth::redirectPath($navigationRole)) ?>"><span class="brand-mark">BS</span><span><strong>Bistrô São Lauro</strong><small>Sistema de gestão</small></span></a>
         <nav class="nav-list" aria-label="Menu principal">
-            <?php foreach (nav_items($user['role']) as [$key, $href, $icon, $label]): ?>
+            <?php foreach (nav_items($navigationRole) as [$key, $href, $icon, $label]): ?>
                 <a class="nav-link <?= $key === $active ? 'active' : '' ?>" href="<?= e($href) ?>"><span aria-hidden="true"><?= e($icon) ?></span><span><?= e($label) ?></span><?php if ($key === 'orders'): ?><span class="count <?= $newOrderCount > 0 ? '' : 'hidden' ?>" data-new-order-count><?= $newOrderCount ?></span><?php endif; ?></a>
             <?php endforeach; ?>
         </nav>
         <div class="sidebar-footer">
+            <?php if ($user['role'] === 'admin' && $navigationRole !== 'admin'): ?><a class="nav-link" href="/admin/"><span aria-hidden="true">←</span><span>Administração</span></a><?php endif; ?>
             <div class="user-chip"><span class="avatar"><?= e(mb_strtoupper(mb_substr($user['name'], 0, 1))) ?></span><div><strong><?= e($user['name']) ?></strong><small><?= e(role_label($user['role'])) ?></small></div></div>
             <form method="post" action="/logout.php"><input type="hidden" name="_csrf" value="<?= e(csrf_token()) ?>"><button class="nav-link" type="submit"><span aria-hidden="true">↪</span><span>Sair</span></button></form>
         </div>
